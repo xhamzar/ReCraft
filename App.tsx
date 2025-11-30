@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
 import * as THREE from 'three';
@@ -33,7 +33,7 @@ import { Config } from './engine/core/Config';
 import { INVENTORY, getItemDef } from './engine/items/ItemRegistry';
 import { Recipe } from './data/recipes';
 
-const FluidSimulator = ({ 
+const FluidSimulator = React.memo(({ 
     playerPositionRef, 
     modifiedBlocks, 
     terrainSeed, 
@@ -56,7 +56,7 @@ const FluidSimulator = ({
     });
 
     return null;
-};
+});
 
 export interface GameTimeManagerHandle {
     trySleep: () => void;
@@ -167,7 +167,7 @@ export default function App() {
   const touchStartTime = useRef<number>(0);
   const touchStartPos = useRef<{ x: number, y: number } | null>(null);
 
-  const updateChunkVersions = (chunkKeys: string[]) => {
+  const updateChunkVersions = useCallback((chunkKeys: string[]) => {
     setChunkVersions(prev => {
         const newVersions = new Map<string, number>(prev);
         let updated = false;
@@ -178,25 +178,25 @@ export default function App() {
         }
         return updated ? newVersions : prev;
     });
-  };
+  }, []);
 
-  const handleMove = (x: number, y: number) => {
+  const handleMove = useCallback((x: number, y: number) => {
     controlsRef.current.move = { x, y };
-  };
+  }, []);
 
-  const handleJump = () => {
+  const handleJump = useCallback(() => {
     controlsRef.current.jump = true;
-  };
+  }, []);
   
-  const handleCrouch = () => {
+  const handleCrouch = useCallback(() => {
       const newState = !controlsRef.current.crouch;
       controlsRef.current.crouch = newState;
       setIsCrouching(newState);
-  };
+  }, []);
 
   const selectedItem = hotbar[activeSlot];
 
-  const handleAction = (action: 'attack') => {
+  const handleAction = useCallback((action: 'attack') => {
     if (action === 'attack') {
         if (selectedItem.id === BLOCK.FISHING_ROD) {
             fishingRef.current?.trigger();
@@ -209,26 +209,29 @@ export default function App() {
 
         const isFalling = playerControllerRef.current?.isFalling() ?? false;
         playerControllerRef.current?.attack();
-        mobManagerRef.current?.performAttack(playerPositionRef.current, playerRotationRef.current, isFalling);
+        mobManagerRef.current?.performAttack(playerPositionRef.current, playerRotationRef.current, isFalling, selectedItem);
     }
-  };
+  }, [selectedItem]);
 
-  const handleCatch = () => {
+  const handleCatch = useCallback(() => {
       setFishCaught(true);
       setTimeout(() => setFishCaught(false), 2000);
-      handleAddItem({ id: BLOCK.RAW_FISH, count: 1 });
-  };
+      // We need to call a function that updates hotbar, handled below
+  }, []);
 
-  const handleDamage = (amount: number, attackerPosition?: THREE.Vector3) => {
+  // Use a ref for handleAddItem to use it inside handleCatch without circular dependency or excessive deps
+  const handleAddItemRef = useRef<(item: ItemStack) => boolean>(() => false);
+
+  const handleDamage = useCallback((amount: number, attackerPosition?: THREE.Vector3) => {
       setPlayerHealth(h => Math.max(0, h - amount));
       setDamageFlash(true);
       if (attackerPosition && playerControllerRef.current) {
           playerControllerRef.current.takeDamage(attackerPosition);
       }
       setTimeout(() => setDamageFlash(false), 200);
-  };
+  }, []);
 
-  const handleRespawn = (e?: React.SyntheticEvent) => {
+  const handleRespawn = useCallback((e?: React.SyntheticEvent) => {
       if (e) {
           e.preventDefault();
           e.stopPropagation();
@@ -241,7 +244,7 @@ export default function App() {
       controlsRef.current.crouch = false;
       setIsCrouching(false);
       setRespawnKey(k => k + 1);
-  };
+  }, []);
 
   const handleUpdateHotbar = (index: number, item: ItemStack) => {
       const newHotbar = [...hotbar];
@@ -249,9 +252,9 @@ export default function App() {
       setHotbar(newHotbar);
   };
 
-  const handleOpenCraftingTable = () => {
+  const handleOpenCraftingTable = useCallback(() => {
       setIsCraftingTableOpen(true);
-  };
+  }, []);
 
   // Generic function to add any item/stack to inventory
   const handleAddItem = (itemToAdd: ItemStack): boolean => {
@@ -289,12 +292,18 @@ export default function App() {
     if (remainingToAdd > 0) {
         setToastMessage("Inventory Full");
         setTimeout(() => setToastMessage(""), 2000);
-        // Could drop the remaining items on the ground here
-        return false; // Not all items were added
+        return false; 
     }
-    
-    return true; // All items added successfully
+    return true; 
   };
+  
+  handleAddItemRef.current = handleAddItem;
+
+  // Memoize the catch handler that depends on handleAddItem
+  const onCatchHandler = useCallback(() => {
+      handleCatch();
+      handleAddItemRef.current({ id: BLOCK.RAW_FISH, count: 1 });
+  }, [handleCatch]);
 
   const handleDropItem = () => {
       const itemToDrop = hotbar[activeSlot];
@@ -321,7 +330,7 @@ export default function App() {
       setTimeout(() => setToastMessage(""), 1500);
   };
 
-  const handleConsumeItem = () => {
+  const handleConsumeItem = useCallback(() => {
       setHotbar(prev => {
           const next = [...prev];
           if (next[activeSlot].id !== BLOCK.AIR) {
@@ -332,10 +341,9 @@ export default function App() {
           }
           return next;
       });
-  };
+  }, [activeSlot]);
   
-  // Loot Table & Drop Logic when breaking blocks
-  const handleBlockBreakDrop = (blockId: number, x: number, y: number, z: number) => {
+  const handleBlockBreakDrop = useCallback((blockId: number, x: number, y: number, z: number) => {
       let dropId = blockId;
       let extraItem = -1;
 
@@ -343,31 +351,30 @@ export default function App() {
       if (blockId === BLOCK.GRASS) dropId = BLOCK.DIRT;
       if (blockId === BLOCK.STONE) dropId = BLOCK.COBBLESTONE;
       if (blockId === BLOCK.LEAF || blockId === BLOCK.PINE_LEAF) {
-           if (Math.random() < 0.1) dropId = BLOCK.SEEDS; // Use Seeds as Sapling placeholder
+           if (Math.random() < 0.1) dropId = BLOCK.SEEDS; 
            else if (Math.random() < 0.05) dropId = BLOCK.STICK;
-           else return; // Usually leaves drop nothing
+           else return; 
       }
-      if (blockId === BLOCK.GLASS) return; // Glass drops nothing
+      if (blockId === BLOCK.GLASS) return;
       if (blockId === BLOCK.TALL_GRASS || blockId === BLOCK.RED_FLOWER || blockId === BLOCK.YELLOW_FLOWER) {
           if (Math.random() < 0.2) dropId = BLOCK.SEEDS;
           else return;
       }
       if (blockId === BLOCK.WHEAT_STAGE_3) {
           dropId = BLOCK.WHEAT_ITEM;
-          extraItem = BLOCK.SEEDS; // Mature wheat drops wheat + seeds
+          extraItem = BLOCK.SEEDS; 
       } else if (blockId >= BLOCK.WHEAT_STAGE_0 && blockId <= BLOCK.WHEAT_STAGE_2) {
-          dropId = BLOCK.SEEDS; // Immature wheat drops seeds
+          dropId = BLOCK.SEEDS; 
       } else if (blockId === BLOCK.DOOR_TOP || blockId === BLOCK.DOOR_TOP_OPEN) {
-          return; // Don't drop from top part
+          return; 
       }
       if (blockId >= BLOCK.BED_FOOT_NORTH && blockId <= BLOCK.BED_HEAD_WEST) {
-          dropId = BLOCK.BED_ITEM; // Bed drops item
+          dropId = BLOCK.BED_ITEM; 
       }
       if (blockId === BLOCK.FENCE) dropId = BLOCK.FENCE;
 
       const spawnItem = (id: number) => {
           const pos = new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5);
-          // Random scatter direction
           const theta = Math.random() * Math.PI * 2;
           const r = 0.2;
           const dir = new THREE.Vector3(Math.sin(theta) * r, 0.5 + Math.random() * 0.5, Math.cos(theta) * r);
@@ -376,29 +383,25 @@ export default function App() {
 
       spawnItem(dropId);
       if (extraItem !== -1) spawnItem(extraItem);
-  };
+  }, []);
 
-  const handlePickup = (itemType: number): boolean => {
-      const success = handleAddItem({ id: itemType, count: 1 });
+  const handlePickup = useCallback((itemType: number): boolean => {
+      const success = handleAddItemRef.current({ id: itemType, count: 1 });
       if (success) {
           const itemName = INVENTORY.find(i => i.id === itemType)?.name || "Item";
           setToastMessage(`Picked up ${itemName}`);
           setTimeout(() => setToastMessage(""), 2000);
       }
       return success;
-  };
+  }, []);
 
   const isModalOpen = isInventoryOpen || isSettingsOpen || isCraftingTableOpen;
 
-  // Helper to check if touch is in a "safe" zone (bottom corners where controls are)
   const isTouchInControlArea = (x: number, y: number) => {
       const h = window.innerHeight;
       const w = window.innerWidth;
-      // Bottom Left (Joystick) - Increased area to match new joystick hitbox
       if (x < 240 && y > h - 240) return true;
-      // Bottom Right (Buttons) - Adjusted for new 3rd button
       if (x > w - 240 && y > h - 160) return true;
-      // Bottom Center (Hotbar)
       if (y > h - 80) return true;
       return false;
   };
@@ -521,12 +524,10 @@ export default function App() {
         <>
           <div className={`absolute inset-0 z-50 pointer-events-none bg-red-600 transition-opacity duration-100 ${damageFlash ? 'opacity-30' : 'opacity-0'}`} />
       
-          {/* Sleeping Overlay */}
           <div className={`absolute inset-0 z-[60] pointer-events-none bg-black transition-opacity duration-[1500ms] flex items-center justify-center ${isSleeping ? 'opacity-100' : 'opacity-0'}`}>
              {isSleeping && <span className="text-white text-4xl animate-pulse">Sleeping...</span>}
           </div>
 
-          {/* Toast Message */}
           <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 ${toastMessage ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
               <div className={`${settings.visualStyle === 'pixel' ? 'pixel-panel' : 'bg-slate-800 rounded-lg shadow-lg border border-slate-700'} px-6 py-2 flex items-center gap-2 text-white`}>
                   <span className="text-xl uppercase tracking-widest">{toastMessage}</span>
@@ -593,7 +594,7 @@ export default function App() {
                 onPlace={handleConsumeItem}
                 onOpenCraftingTable={handleOpenCraftingTable}
             />
-            <FishingSystem ref={fishingRef} playerPositionRef={playerPositionRef} playerRotationRef={playerRotationRef} onCatch={handleCatch} />
+            <FishingSystem ref={fishingRef} playerPositionRef={playerPositionRef} playerRotationRef={playerRotationRef} onCatch={onCatchHandler} />
             {settings.showFps && <Stats className="!left-auto !right-0 !top-16 opacity-50" />}
           </Canvas>
 

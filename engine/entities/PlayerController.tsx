@@ -51,6 +51,14 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
       breathTime: 0
   });
 
+  // Reusable vectors to reduce garbage collection
+  const vecDirection = useRef(new THREE.Vector3());
+  const vecCamDir = useRef(new THREE.Vector3());
+  const vecCamRight = useRef(new THREE.Vector3());
+  const quatTarget = useRef(new THREE.Quaternion());
+  const vecTargetLook = useRef(new THREE.Vector3());
+  const vecTargetCamPos = useRef(new THREE.Vector3());
+
   const BASE_SPEED = 5;
   const JUMP_FORCE = 8.5;
   const SWIM_FORCE = 4.0;
@@ -80,10 +88,10 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
   }));
 
   useFrame((state, delta) => {
-    const dt = Math.min(delta, 0.05);
+    const dt = Math.min(delta, 0.05); // Cap delta to prevent explosion on lag spikes
     const isCrouching = controls.current.crouch;
 
-    // Movement Physics
+    // --- 1. MOVEMENT INPUT CALCULATION ---
     if (controls.current.look.x !== 0) {
         cameraAngle.current -= controls.current.look.x * dt * 2.0;
     }
@@ -91,36 +99,35 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
     const moveX = controls.current.move.x;
     const moveY = controls.current.move.y;
 
-    const direction = new THREE.Vector3();
+    vecDirection.current.set(0, 0, 0);
     
     if (moveX !== 0 || moveY !== 0) {
-        const camDir = new THREE.Vector3();
-        camera.getWorldDirection(camDir);
-        camDir.y = 0;
-        camDir.normalize();
+        camera.getWorldDirection(vecCamDir.current);
+        vecCamDir.current.y = 0;
+        vecCamDir.current.normalize();
 
-        const camRight = new THREE.Vector3();
-        camRight.crossVectors(camDir, new THREE.Vector3(0, 1, 0)).normalize();
+        vecCamRight.current.crossVectors(vecCamDir.current, new THREE.Vector3(0, 1, 0)).normalize();
 
-        const forwardMove = camDir.clone().multiplyScalar(-moveY);
-        const rightMove = camRight.clone().multiplyScalar(moveX);
-        direction.add(forwardMove).add(rightMove).normalize();
+        const forwardMove = vecCamDir.current.multiplyScalar(-moveY);
+        const rightMove = vecCamRight.current.multiplyScalar(moveX);
+        vecDirection.current.add(forwardMove).add(rightMove).normalize();
     }
 
-    if (direction.lengthSq() > 0.001) {
-        const targetQuaternion = new THREE.Quaternion();
-        const angle = Math.atan2(direction.x, direction.z);
-        targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-        rotationRef.current.slerp(targetQuaternion, 0.2);
+    // --- 2. ROTATION ---
+    if (vecDirection.current.lengthSq() > 0.001) {
+        const angle = Math.atan2(vecDirection.current.x, vecDirection.current.z);
+        quatTarget.current.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        rotationRef.current.slerp(quatTarget.current, 10 * dt); // Smooth rotation
     } 
 
     const currentSpeed = isCrouching ? BASE_SPEED * 0.4 : BASE_SPEED;
-    velocity.current.x = direction.x * currentSpeed;
-    velocity.current.z = direction.z * currentSpeed;
+    velocity.current.x = vecDirection.current.x * currentSpeed;
+    velocity.current.z = vecDirection.current.z * currentSpeed;
 
-    const pos = positionRef.current.clone();
+    const pos = positionRef.current.clone(); // Clone is okay here as it's the master pos
     const currentDims = isCrouching ? CROUCH_DIMS : NORMAL_DIMS;
     
+    // --- 3. PHYSICS EXECUTION ---
     const { grounded, inWater } = applyPhysics(pos, velocity.current, currentDims, dt, noise, modifiedBlocks.current);
     isGroundedRef.current = grounded;
     
@@ -143,17 +150,23 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
 
     positionRef.current.copy(pos);
     
+    // --- 4. VISUAL UPDATE (MESH) ---
     if (groupRef.current) {
+        // Linear Interpolate render position for smoothness if needed, 
+        // but for tight controls, direct copy is often better unless utilizing a separate render tick.
+        // We stick to direct copy here to avoid "floaty" feeling controls.
         groupRef.current.position.copy(pos);
         groupRef.current.quaternion.copy(rotationRef.current);
         
         const crouchOffset = isCrouching ? -0.2 : 0;
         const currentY = groupRef.current.children[0].position.y;
         const targetY = crouchOffset;
-        groupRef.current.children[0].position.y = THREE.MathUtils.lerp(currentY, targetY, 0.2);
+        // Damp the crouch animation
+        groupRef.current.children[0].position.y = THREE.MathUtils.damp(currentY, targetY, 15, dt);
     }
     
-    const isMoving = direction.lengthSq() > 0.1 && (grounded || inWater);
+    // --- 5. CAMERA LOGIC ---
+    const isMoving = vecDirection.current.lengthSq() > 0.1 && (grounded || inWater);
     if (isMoving) {
         animState.current.bobTime += dt * (isCrouching ? 8 : 12);
     } else {
@@ -163,15 +176,27 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
 
     const eyeHeight = isCrouching ? 1.4 : 1.7;
     const headBob = isMoving ? Math.sin(animState.current.bobTime) * 0.05 : 0;
-    const targetLookPos = pos.clone().add(new THREE.Vector3(0, eyeHeight * 0.5 + headBob, 0));
+    
+    // Stabilize Camera:
+    // Look Target shouldn't bob as much, otherwise the world shakes.
+    vecTargetLook.current.copy(pos).add(new THREE.Vector3(0, eyeHeight * 0.5, 0));
     
     const offsetX = Math.sin(cameraAngle.current) * ISO_DISTANCE;
     const offsetZ = Math.cos(cameraAngle.current) * ISO_DISTANCE;
-    const targetCamPos = pos.clone().add(new THREE.Vector3(offsetX, ISO_HEIGHT - (1.8 - eyeHeight) + headBob, offsetZ));
     
-    camera.position.lerp(targetCamPos, 0.1);
-    camera.lookAt(targetLookPos);
+    // Camera position gets the bob
+    vecTargetCamPos.current.copy(pos).add(new THREE.Vector3(offsetX, ISO_HEIGHT - (1.8 - eyeHeight) + headBob, offsetZ));
     
+    // Use MathUtils.damp (frame-rate independent smoothing) instead of simple lerp
+    // Lambda 5 = slow smooth, Lambda 20 = fast snap. 8-10 is a good sweet spot for isometric.
+    const smoothSpeed = 8;
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, vecTargetCamPos.current.x, smoothSpeed, dt);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, vecTargetCamPos.current.y, smoothSpeed, dt);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, vecTargetCamPos.current.z, smoothSpeed, dt);
+    
+    camera.lookAt(vecTargetLook.current);
+    
+    // --- 6. ANIMATION UPDATES ---
     if (attackState.current.active) {
         attackState.current.time += dt;
         const progress = Math.min(attackState.current.time / 0.3, 1); // 0.3s swing
@@ -184,7 +209,6 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
     } else if (bodyRef.current && leftLegRef.current && rightLegRef.current && leftArmRef.current && rightArmRef.current) {
         const breath = Math.sin(animState.current.breathTime) * 0.01;
         
-        // --- Body / Leg Animation ---
         if (grounded || inWater) {
             if (isMoving) { // Walking
                 leftLegRef.current.rotation.x = THREE.MathUtils.lerp(leftLegRef.current.rotation.x, Math.sin(animState.current.bobTime) * 0.5, 0.2);
@@ -198,7 +222,7 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
             rightLegRef.current.rotation.x = THREE.MathUtils.lerp(rightLegRef.current.rotation.x, 0.3, 0.2);
         }
 
-        // --- Arm Animation ---
+        // Arm Animation
         if (isMoving) { // Walking arm swing
             leftArmRef.current.rotation.x = THREE.MathUtils.lerp(leftArmRef.current.rotation.x, Math.sin(animState.current.bobTime + Math.PI) * 0.5, 0.2);
             rightArmRef.current.rotation.x = THREE.MathUtils.lerp(rightArmRef.current.rotation.x, Math.sin(animState.current.bobTime) * 0.5, 0.2);
@@ -221,7 +245,6 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
       <group position={[0, 0, 0]}> 
         <mesh position={[0, 1.75, 0]} castShadow receiveShadow>
             <boxGeometry args={[0.5, 0.5, 0.5]} />
-            {/* Order: Right, Left, Top, Bottom, Front, Back */}
             <meshStandardMaterial attach="material-0" map={BLOCK_TEXTURES.player_head_side} />
             <meshStandardMaterial attach="material-1" map={BLOCK_TEXTURES.player_head_side} />
             <meshStandardMaterial attach="material-2" map={BLOCK_TEXTURES.player_head_top} />

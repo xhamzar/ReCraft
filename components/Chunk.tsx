@@ -4,7 +4,6 @@ import { useFrame } from '@react-three/fiber';
 import { SimplexNoise } from '../engine/math/Noise';
 import { Config } from '../engine/core/Config';
 import { BLOCK, BLOCK_DEFS } from '../engine/world/BlockRegistry';
-import { injectWaterShader } from '../shaders/waterShader';
 import { getBlockHeight, getTreeRandom, getBlock } from '../engine/world/WorldGen';
 import { BLOCK_TEXTURES } from '../engine/graphics/TextureGenerator';
 import { TERRAIN_DATA } from '../data/blocks/terrain';
@@ -37,16 +36,13 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
   const snowRef = useRef<THREE.InstancedMesh>(null);
   const cactusRef = useRef<THREE.InstancedMesh>(null);
   const pineLeafRef = useRef<THREE.InstancedMesh>(null);
-  const stairBottomRef = useRef<THREE.InstancedMesh>(null);
-  const stairTopRef = useRef<THREE.InstancedMesh>(null);
+  const stairRef = useRef<THREE.InstancedMesh>(null);
   const doorRef = useRef<THREE.InstancedMesh>(null);
   const cobbleRef = useRef<THREE.InstancedMesh>(null);
   const gravelRef = useRef<THREE.InstancedMesh>(null);
   const farmlandRef = useRef<THREE.InstancedMesh>(null);
-  const cobbleStairBottomRef = useRef<THREE.InstancedMesh>(null);
-  const cobbleStairTopRef = useRef<THREE.InstancedMesh>(null);
+  const cobbleStairRef = useRef<THREE.InstancedMesh>(null);
   const torchRef = useRef<THREE.InstancedMesh>(null);
-  const craftingTableRef = useRef<THREE.InstancedMesh>(null);
   
   // Fence Refs
   const fencePostRef = useRef<THREE.InstancedMesh>(null);
@@ -71,10 +67,34 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
   const waterMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
 
   useFrame(({ clock }) => {
-    if (waterMaterialRef.current && waterMaterialRef.current.userData.shader) {
-      waterMaterialRef.current.userData.shader.uniforms.uTime.value = clock.getElapsedTime();
+    // Animasi sederhana untuk tekstur air, jauh lebih ringan daripada shader
+    if (waterMaterialRef.current && waterMaterialRef.current.map) {
+      waterMaterialRef.current.map.offset.y = (clock.getElapsedTime() * -0.1) % 1;
     }
   });
+
+  const stairGeometry = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    const vertices = [], normals = [], uvs = [], indices = [];
+    let indexOffset = 0;
+    const addBox = (w: number, h: number, d: number, tx: number, ty: number, tz: number) => {
+        const boxGeo = new THREE.BoxGeometry(w, h, d);
+        const posAttr = boxGeo.attributes.position, normAttr = boxGeo.attributes.normal, uvAttr = boxGeo.attributes.uv, indexAttr = boxGeo.index;
+        if (indexAttr) for (let i = 0; i < indexAttr.count; i++) indices.push(indexAttr.getX(i) + indexOffset);
+        indexOffset += posAttr.count;
+        for (let i = 0; i < posAttr.count; i++) {
+            vertices.push(posAttr.getX(i) + tx, posAttr.getY(i) + ty, posAttr.getZ(i) + tz);
+            normals.push(normAttr.getX(i), normAttr.getY(i), normAttr.getZ(i));
+            uvs.push(uvAttr.getX(i), uvAttr.getY(i));
+        }
+    };
+    addBox(1, 0.5, 1, 0, -0.25, 0); addBox(1, 0.5, 0.5, 0, 0.25, -0.25);
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    return geometry;
+  }, []);
 
   const plantGeometry = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
@@ -112,14 +132,13 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
   }, []);
   
   const fenceConnectGeometry = useMemo(() => {
-      // Depth is 0.5 to reach center, translated by half its depth.
-      const geometry = new THREE.BoxGeometry(0.25, 0.3, 0.5); 
-      geometry.translate(0, 0.1, -0.25); 
+      const geometry = new THREE.BoxGeometry(0.15, 0.2, 0.5);
+      geometry.translate(0, 0.15, -0.25); // Translate to bridge the gap
       return geometry;
   }, []);
 
-  const { blocks, dirtBlocks, stoneBlocks, waterBlocks, sandBlocks, woodBlocks, leafBlocks, plankBlocks, brickBlocks, glassBlocks, snowBlocks, cactusBlocks, pineLeafBlocks, doorBlocks, cobbleBlocks, gravelBlocks, farmlandBlocks, wheat0Blocks, wheat1Blocks, wheat2Blocks, wheat3Blocks, tallGrassBlocks, redFlowerBlocks, yellowFlowerBlocks, bedFootBlocks, bedHeadBlocks, torchBlocks, fencePostBlocks, fenceNBlocks, fenceEBlocks, fenceSBlocks, fenceWBlocks, craftingTableBlocks, stairBottomBlocks, stairTopBlocks, cobbleStairBottomBlocks, cobbleStairTopBlocks } = useMemo(() => {
-    const _blocks: THREE.Matrix4[] = [], _dirtBlocks: THREE.Matrix4[] = [], _stoneBlocks: THREE.Matrix4[] = [], _waterBlocks: THREE.Matrix4[] = [], _sandBlocks: THREE.Matrix4[] = [], _woodBlocks: THREE.Matrix4[] = [], _leafBlocks: THREE.Matrix4[] = [], _plankBlocks: THREE.Matrix4[] = [], _brickBlocks: THREE.Matrix4[] = [], _glassBlocks: THREE.Matrix4[] = [], _snowBlocks: THREE.Matrix4[] = [], _cactusBlocks: THREE.Matrix4[] = [], _pineLeafBlocks: THREE.Matrix4[] = [], _doorBlocks: THREE.Matrix4[] = [], _cobbleBlocks: THREE.Matrix4[] = [], _gravelBlocks: THREE.Matrix4[] = [], _farmlandBlocks: THREE.Matrix4[] = [], _wheat0Blocks: THREE.Matrix4[] = [], _wheat1Blocks: THREE.Matrix4[] = [], _wheat2Blocks: THREE.Matrix4[] = [], _wheat3Blocks: THREE.Matrix4[] = [], _tallGrassBlocks: THREE.Matrix4[] = [], _redFlowerBlocks: THREE.Matrix4[] = [], _yellowFlowerBlocks: THREE.Matrix4[] = [], _bedFootBlocks: THREE.Matrix4[] = [], _bedHeadBlocks: THREE.Matrix4[] = [], _torchBlocks: THREE.Matrix4[] = [], _fencePostBlocks: THREE.Matrix4[] = [], _fenceNBlocks: THREE.Matrix4[] = [], _fenceEBlocks: THREE.Matrix4[] = [], _fenceSBlocks: THREE.Matrix4[] = [], _fenceWBlocks: THREE.Matrix4[] = [], _craftingTableBlocks: THREE.Matrix4[] = [], _stairBottomBlocks: THREE.Matrix4[] = [], _stairTopBlocks: THREE.Matrix4[] = [], _cobbleStairBottomBlocks: THREE.Matrix4[] = [], _cobbleStairTopBlocks: THREE.Matrix4[] = [];
+  const { blocks, dirtBlocks, stoneBlocks, waterBlocks, sandBlocks, woodBlocks, leafBlocks, plankBlocks, brickBlocks, glassBlocks, snowBlocks, cactusBlocks, pineLeafBlocks, stairBlocks, doorBlocks, cobbleBlocks, gravelBlocks, farmlandBlocks, wheat0Blocks, wheat1Blocks, wheat2Blocks, wheat3Blocks, tallGrassBlocks, redFlowerBlocks, yellowFlowerBlocks, cobbleStairBlocks, bedFootBlocks, bedHeadBlocks, torchBlocks, fencePostBlocks, fenceNBlocks, fenceEBlocks, fenceSBlocks, fenceWBlocks } = useMemo(() => {
+    const _blocks: THREE.Matrix4[] = [], _dirtBlocks: THREE.Matrix4[] = [], _stoneBlocks: THREE.Matrix4[] = [], _waterBlocks: THREE.Matrix4[] = [], _sandBlocks: THREE.Matrix4[] = [], _woodBlocks: THREE.Matrix4[] = [], _leafBlocks: THREE.Matrix4[] = [], _plankBlocks: THREE.Matrix4[] = [], _brickBlocks: THREE.Matrix4[] = [], _glassBlocks: THREE.Matrix4[] = [], _snowBlocks: THREE.Matrix4[] = [], _cactusBlocks: THREE.Matrix4[] = [], _pineLeafBlocks: THREE.Matrix4[] = [], _stairBlocks: THREE.Matrix4[] = [], _doorBlocks: THREE.Matrix4[] = [], _cobbleBlocks: THREE.Matrix4[] = [], _gravelBlocks: THREE.Matrix4[] = [], _farmlandBlocks: THREE.Matrix4[] = [], _wheat0Blocks: THREE.Matrix4[] = [], _wheat1Blocks: THREE.Matrix4[] = [], _wheat2Blocks: THREE.Matrix4[] = [], _wheat3Blocks: THREE.Matrix4[] = [], _tallGrassBlocks: THREE.Matrix4[] = [], _redFlowerBlocks: THREE.Matrix4[] = [], _yellowFlowerBlocks: THREE.Matrix4[] = [], _cobbleStairBlocks: THREE.Matrix4[] = [], _bedFootBlocks: THREE.Matrix4[] = [], _bedHeadBlocks: THREE.Matrix4[] = [], _torchBlocks: THREE.Matrix4[] = [], _fencePostBlocks: THREE.Matrix4[] = [], _fenceNBlocks: THREE.Matrix4[] = [], _fenceEBlocks: THREE.Matrix4[] = [], _fenceSBlocks: THREE.Matrix4[] = [], _fenceWBlocks: THREE.Matrix4[] = [];
     const dummy = new THREE.Object3D();
     const startX = chunkX * Config.CHUNK_SIZE;
     const startZ = chunkZ * Config.CHUNK_SIZE;
@@ -140,6 +159,16 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
             case BLOCK.SNOW: _snowBlocks.push(mat); break;
             case BLOCK.CACTUS: _cactusBlocks.push(mat); break;
             case BLOCK.PINE_LEAF: _pineLeafBlocks.push(mat); break;
+            case BLOCK.STAIR_NORTH:
+            case BLOCK.STAIR_EAST:
+            case BLOCK.STAIR_SOUTH:
+            case BLOCK.STAIR_WEST:
+                 _stairBlocks.push(mat); break;
+            case BLOCK.COBBLESTONE_STAIR_NORTH:
+            case BLOCK.COBBLESTONE_STAIR_EAST:
+            case BLOCK.COBBLESTONE_STAIR_SOUTH:
+            case BLOCK.COBBLESTONE_STAIR_WEST:
+                 _cobbleStairBlocks.push(mat); break;
             case BLOCK.PLANK: _plankBlocks.push(mat); break;
             case BLOCK.BRICK: _brickBlocks.push(mat); break;
             case BLOCK.GLASS: _glassBlocks.push(mat); break;
@@ -158,7 +187,6 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
             case BLOCK.BED_HEAD_NORTH: case BLOCK.BED_HEAD_EAST: case BLOCK.BED_HEAD_SOUTH: case BLOCK.BED_HEAD_WEST: _bedHeadBlocks.push(mat); break;
             case BLOCK.TORCH: case BLOCK.TORCH_NORTH: case BLOCK.TORCH_EAST: case BLOCK.TORCH_SOUTH: case BLOCK.TORCH_WEST: _torchBlocks.push(mat); break;
             case BLOCK.FENCE: _fencePostBlocks.push(mat); break;
-            case BLOCK.CRAFTING_TABLE: _craftingTableBlocks.push(mat); break;
         }
     };
     
@@ -205,49 +233,13 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
         }
 
         if ((vBlock >= BLOCK.STAIR_NORTH && vBlock <= BLOCK.STAIR_WEST) || (vBlock >= BLOCK.COBBLESTONE_STAIR_NORTH && vBlock <= BLOCK.COBBLESTONE_STAIR_WEST)) {
-            const isCobble = vBlock >= BLOCK.COBBLESTONE_STAIR_NORTH;
-
-            // --- Bottom Slab (always the same) ---
-            dummy.position.set(worldX, y - 0.25, worldZ);
-            dummy.rotation.set(0, 0, 0);
-            dummy.scale.set(1, 0.5, 1);
-            dummy.updateMatrix();
-            if (isCobble) {
-                _cobbleStairBottomBlocks.push(dummy.matrix.clone());
-            } else {
-                _stairBottomBlocks.push(dummy.matrix.clone());
-            }
-
-            // --- Top Slab (position and scale depends on direction) ---
-            const isNorth = vBlock === BLOCK.STAIR_NORTH || vBlock === BLOCK.COBBLESTONE_STAIR_NORTH;
             const isSouth = vBlock === BLOCK.STAIR_SOUTH || vBlock === BLOCK.COBBLESTONE_STAIR_SOUTH;
             const isEast = vBlock === BLOCK.STAIR_EAST || vBlock === BLOCK.COBBLESTONE_STAIR_EAST;
             const isWest = vBlock === BLOCK.STAIR_WEST || vBlock === BLOCK.COBBLESTONE_STAIR_WEST;
-
-            dummy.rotation.set(0, 0, 0); // Reset rotation for simplicity
             
-            if (isNorth) {
-                dummy.position.set(worldX, y + 0.25, worldZ - 0.25);
-                dummy.scale.set(1, 0.5, 0.5);
-            } else if (isSouth) {
-                dummy.position.set(worldX, y + 0.25, worldZ + 0.25);
-                dummy.scale.set(1, 0.5, 0.5);
-            } else if (isEast) {
-                dummy.position.set(worldX + 0.25, y + 0.25, worldZ);
-                dummy.scale.set(0.5, 0.5, 1);
-            } else if (isWest) {
-                dummy.position.set(worldX - 0.25, y + 0.25, worldZ);
-                dummy.scale.set(0.5, 0.5, 1);
-            }
-            
-            dummy.updateMatrix();
-            if (isCobble) {
-                _cobbleStairTopBlocks.push(dummy.matrix.clone());
-            } else {
-                _stairTopBlocks.push(dummy.matrix.clone());
-            }
-            
-            return; // Skip default addBlockToArrays
+            if (isSouth) dummy.rotation.y = Math.PI;
+            else if (isEast) dummy.rotation.y = -Math.PI / 2;
+            else if (isWest) dummy.rotation.y = Math.PI / 2;
         }
 
         if (vBlock >= BLOCK.BED_FOOT_NORTH && vBlock <= BLOCK.BED_HEAD_WEST) {
@@ -306,15 +298,13 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
             processBlock(type, ux, uy, uz);
         }
     }
-    return { blocks: _blocks, dirtBlocks: _dirtBlocks, stoneBlocks: _stoneBlocks, waterBlocks: _waterBlocks, sandBlocks: _sandBlocks, woodBlocks: _woodBlocks, leafBlocks: _leafBlocks, plankBlocks: _plankBlocks, brickBlocks: _brickBlocks, glassBlocks: _glassBlocks, snowBlocks: _snowBlocks, cactusBlocks: _cactusBlocks, pineLeafBlocks: _pineLeafBlocks, doorBlocks: _doorBlocks, cobbleBlocks: _cobbleBlocks, gravelBlocks: _gravelBlocks, farmlandBlocks: _farmlandBlocks, wheat0Blocks: _wheat0Blocks, wheat1Blocks: _wheat1Blocks, wheat2Blocks: _wheat2Blocks, wheat3Blocks: _wheat3Blocks, tallGrassBlocks: _tallGrassBlocks, redFlowerBlocks: _redFlowerBlocks, yellowFlowerBlocks: _yellowFlowerBlocks, bedFootBlocks: _bedFootBlocks, bedHeadBlocks: _bedHeadBlocks, torchBlocks: _torchBlocks, fencePostBlocks: _fencePostBlocks, fenceNBlocks: _fenceNBlocks, fenceEBlocks: _fenceEBlocks, fenceSBlocks: _fenceSBlocks, fenceWBlocks: _fenceWBlocks, craftingTableBlocks: _craftingTableBlocks, stairBottomBlocks: _stairBottomBlocks, stairTopBlocks: _stairTopBlocks, cobbleStairBottomBlocks: _cobbleStairBottomBlocks, cobbleStairTopBlocks: _cobbleStairTopBlocks };
+    return { blocks: _blocks, dirtBlocks: _dirtBlocks, stoneBlocks: _stoneBlocks, waterBlocks: _waterBlocks, sandBlocks: _sandBlocks, woodBlocks: _woodBlocks, leafBlocks: _leafBlocks, plankBlocks: _plankBlocks, brickBlocks: _brickBlocks, glassBlocks: _glassBlocks, snowBlocks: _snowBlocks, cactusBlocks: _cactusBlocks, pineLeafBlocks: _pineLeafBlocks, stairBlocks: _stairBlocks, doorBlocks: _doorBlocks, cobbleBlocks: _cobbleBlocks, gravelBlocks: _gravelBlocks, farmlandBlocks: _farmlandBlocks, wheat0Blocks: _wheat0Blocks, wheat1Blocks: _wheat1Blocks, wheat2Blocks: _wheat2Blocks, wheat3Blocks: _wheat3Blocks, tallGrassBlocks: _tallGrassBlocks, redFlowerBlocks: _redFlowerBlocks, yellowFlowerBlocks: _yellowFlowerBlocks, cobbleStairBlocks: _cobbleStairBlocks, bedFootBlocks: _bedFootBlocks, bedHeadBlocks: _bedHeadBlocks, torchBlocks: _torchBlocks, fencePostBlocks: _fencePostBlocks, fenceNBlocks: _fenceNBlocks, fenceEBlocks: _fenceEBlocks, fenceSBlocks: _fenceSBlocks, fenceWBlocks: _fenceWBlocks };
   }, [chunkX, chunkZ, noise, version, modifiedBlocks]);
 
   useLayoutEffect(() => {
     const apply = (ref: any, data: any) => { if(ref.current) { data.forEach((m:any, i:any)=>ref.current.setMatrixAt(i,m)); ref.current.instanceMatrix.needsUpdate=true; }};
-    apply(meshRef, blocks); apply(dirtRef, dirtBlocks); apply(stoneRef, stoneBlocks); apply(waterRef, waterBlocks); apply(sandRef, sandBlocks); apply(woodRef, woodBlocks); apply(leafRef, leafBlocks); apply(plankRef, plankBlocks); apply(brickRef, brickBlocks); apply(glassRef, glassBlocks); apply(snowRef, snowBlocks); apply(cactusRef, cactusBlocks); apply(pineLeafRef, pineLeafBlocks); apply(doorRef, doorBlocks); apply(cobbleRef, cobbleBlocks); apply(gravelRef, gravelBlocks); apply(farmlandRef, farmlandBlocks); apply(wheat0Ref, wheat0Blocks); apply(wheat1Ref, wheat1Blocks); apply(wheat2Ref, wheat2Blocks); apply(wheat3Ref, wheat3Blocks); apply(tallGrassRef, tallGrassBlocks); apply(redFlowerRef, redFlowerBlocks); apply(yellowFlowerRef, yellowFlowerBlocks); apply(bedFootRef, bedFootBlocks); apply(bedHeadRef, bedHeadBlocks); apply(torchRef, torchBlocks); apply(fencePostRef, fencePostBlocks); apply(fenceNRef, fenceNBlocks); apply(fenceERef, fenceEBlocks); apply(fenceSRef, fenceSBlocks); apply(fenceWRef, fenceWBlocks); apply(craftingTableRef, craftingTableBlocks); apply(stairBottomRef, stairBottomBlocks); apply(stairTopRef, stairTopBlocks); apply(cobbleStairBottomRef, cobbleStairBottomBlocks); apply(cobbleStairTopRef, cobbleStairTopBlocks);
+    apply(meshRef, blocks); apply(dirtRef, dirtBlocks); apply(stoneRef, stoneBlocks); apply(waterRef, waterBlocks); apply(sandRef, sandBlocks); apply(woodRef, woodBlocks); apply(leafRef, leafBlocks); apply(plankRef, plankBlocks); apply(brickRef, brickBlocks); apply(glassRef, glassBlocks); apply(snowRef, snowBlocks); apply(cactusRef, cactusBlocks); apply(pineLeafRef, pineLeafBlocks); apply(stairRef, stairBlocks); apply(doorRef, doorBlocks); apply(cobbleRef, cobbleBlocks); apply(gravelRef, gravelBlocks); apply(farmlandRef, farmlandBlocks); apply(wheat0Ref, wheat0Blocks); apply(wheat1Ref, wheat1Blocks); apply(wheat2Ref, wheat2Blocks); apply(wheat3Ref, wheat3Blocks); apply(tallGrassRef, tallGrassBlocks); apply(redFlowerRef, redFlowerBlocks); apply(yellowFlowerRef, yellowFlowerBlocks); apply(cobbleStairRef, cobbleStairBlocks); apply(bedFootRef, bedFootBlocks); apply(bedHeadRef, bedHeadBlocks); apply(torchRef, torchBlocks); apply(fencePostRef, fencePostBlocks); apply(fenceNRef, fenceNBlocks); apply(fenceERef, fenceEBlocks); apply(fenceSRef, fenceSBlocks); apply(fenceWRef, fenceWBlocks);
   }, [blocks]);
-
-  const onBeforeCompileWater = (shader: THREE.Shader) => { injectWaterShader(shader); waterMaterialRef.current!.userData.shader = shader; };
 
   return (
     <group frustumCulled>
@@ -365,16 +355,6 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
             <meshStandardMaterial attach="material-4" map={BLOCK_TEXTURES.wood_side} roughness={0.9} color="white" />
             <meshStandardMaterial attach="material-5" map={BLOCK_TEXTURES.wood_side} roughness={0.9} color="white" />
         </instancedMesh>
-        
-        <instancedMesh ref={craftingTableRef} args={[undefined, undefined, craftingTableBlocks.length]} castShadow receiveShadow userData={{ isTerrain: true }}>
-             <boxGeometry args={[1, 1, 1]} />
-             <meshStandardMaterial attach="material-0" map={BLOCK_TEXTURES.crafting_table_side} roughness={0.8} color="white" />
-             <meshStandardMaterial attach="material-1" map={BLOCK_TEXTURES.crafting_table_side} roughness={0.8} color="white" />
-             <meshStandardMaterial attach="material-2" map={BLOCK_TEXTURES.crafting_table_top} roughness={0.8} color="white" />
-             <meshStandardMaterial attach="material-3" map={BLOCK_TEXTURES.plank} roughness={0.8} color="white" />
-             <meshStandardMaterial attach="material-4" map={BLOCK_TEXTURES.crafting_table_side} roughness={0.8} color="white" />
-             <meshStandardMaterial attach="material-5" map={BLOCK_TEXTURES.crafting_table_side} roughness={0.8} color="white" />
-        </instancedMesh>
 
         <instancedMesh ref={cactusRef} args={[undefined, undefined, cactusBlocks.length]} castShadow receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[0.85, 1, 0.85]} /> <meshStandardMaterial map={BLOCK_TEXTURES.cactus} color="white" roughness={0.8} /> </instancedMesh>
         
@@ -390,12 +370,8 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
         <instancedMesh ref={plankRef} args={[undefined, undefined, plankBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1, 1, 1]} /> <meshStandardMaterial map={BLOCK_TEXTURES.plank} color="white" roughness={0.8} /> </instancedMesh>
         
         <instancedMesh ref={brickRef} args={[undefined, undefined, brickBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1, 1, 1]} /> <meshStandardMaterial map={BLOCK_TEXTURES.brick} color="white" roughness={0.9} /> </instancedMesh>
-        
-        <instancedMesh ref={stairBottomRef} args={[undefined, undefined, stairBottomBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1,1,1]}/> <meshStandardMaterial map={BLOCK_TEXTURES.plank} color="white" roughness={0.6} /> </instancedMesh>
-        <instancedMesh ref={stairTopRef} args={[undefined, undefined, stairTopBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1,1,1]}/> <meshStandardMaterial map={BLOCK_TEXTURES.plank} color="white" roughness={0.6} /> </instancedMesh>
-        <instancedMesh ref={cobbleStairBottomRef} args={[undefined, undefined, cobbleStairBottomBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1,1,1]}/> <meshStandardMaterial map={BLOCK_TEXTURES.cobblestone} color="white" roughness={0.9} /> </instancedMesh>
-        <instancedMesh ref={cobbleStairTopRef} args={[undefined, undefined, cobbleStairTopBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1,1,1]}/> <meshStandardMaterial map={BLOCK_TEXTURES.cobblestone} color="white" roughness={0.9} /> </instancedMesh>
-
+        <instancedMesh ref={stairRef} args={[stairGeometry, undefined, stairBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <meshStandardMaterial map={BLOCK_TEXTURES.plank} color="white" roughness={0.6} /> </instancedMesh>
+        <instancedMesh ref={cobbleStairRef} args={[stairGeometry, undefined, cobbleStairBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <meshStandardMaterial map={BLOCK_TEXTURES.cobblestone} color="white" roughness={0.9} /> </instancedMesh>
         <instancedMesh ref={doorRef} args={[undefined, undefined, doorBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1, 1, 0.2]} /> <meshStandardMaterial map={BLOCK_TEXTURES.door} color="white" roughness={0.8} /> </instancedMesh>
         <instancedMesh ref={bedFootRef} args={[bedGeometry, undefined, bedFootBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <meshStandardMaterial map={BLOCK_TEXTURES.bed_foot} color="white" roughness={0.9} /> </instancedMesh>
         <instancedMesh ref={bedHeadRef} args={[bedGeometry, undefined, bedHeadBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <meshStandardMaterial map={BLOCK_TEXTURES.bed_head} color="white" roughness={0.9} /> </instancedMesh>
@@ -420,7 +396,18 @@ export const Chunk = React.memo(({ chunkX, chunkZ, noise, modifiedBlocks, versio
         <instancedMesh ref={fenceWRef} args={[fenceConnectGeometry, undefined, fenceWBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <meshStandardMaterial map={BLOCK_TEXTURES.plank} color="white" roughness={0.8} /> </instancedMesh>
 
         <instancedMesh ref={glassRef} args={[undefined, undefined, glassBlocks.length]} userData={{ isTerrain: true }}> <boxGeometry args={[1, 1, 1]} /> <meshStandardMaterial map={BLOCK_TEXTURES.glass} color="white" transparent opacity={0.5} side={THREE.DoubleSide} /> </instancedMesh>
-        <instancedMesh ref={waterRef} args={[undefined, undefined, waterBlocks.length]} receiveShadow userData={{ isTerrain: true }}> <boxGeometry args={[1, 1, 1]} /> <meshStandardMaterial ref={waterMaterialRef} map={BLOCK_TEXTURES.water} color="white" transparent opacity={0.7} roughness={0.0} metalness={0.1} onBeforeCompile={onBeforeCompileWater} /> </instancedMesh>
+        <instancedMesh ref={waterRef} args={[undefined, undefined, waterBlocks.length]} receiveShadow userData={{ isTerrain: true }}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial
+                ref={waterMaterialRef}
+                map={BLOCK_TEXTURES.water}
+                color="white"
+                transparent
+                opacity={0.7}
+                roughness={1}
+                metalness={0}
+            />
+        </instancedMesh>
     </group>
   );
 });

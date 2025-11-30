@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, useMemo, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Zombie } from './Zombie';
@@ -45,6 +45,8 @@ export const MobManager = forwardRef<MobManagerHandle, MobManagerProps>(({
   const [damageEvents, setDamageEvents] = useState<Record<string, DamageEvent>>({});
   const mobPositionsRef = useRef(new Map<string, THREE.Vector3>());
   const lastSpawnTime = useRef(0);
+  const lastCleanupTime = useRef(0);
+  // Create noise instance once and pass it down
   const noise = useMemo(() => new SimplexNoise(terrainSeed), [terrainSeed]);
 
   useImperativeHandle(ref, () => {
@@ -79,7 +81,7 @@ export const MobManager = forwardRef<MobManagerHandle, MobManagerProps>(({
                 let damage = isCritical ? 2 : 1;
                 // Check for Sharpness enchantment
                 if (heldItem.enchantments?.sharpness) {
-                    damage += heldItem.enchantments.sharpness; // Add sharpness level as bonus damage
+                    damage += heldItem.enchantments.sharpness; 
                 }
 
                 const attackDirection = target.mobPos.clone().sub(playerPos).normalize();
@@ -97,30 +99,56 @@ export const MobManager = forwardRef<MobManagerHandle, MobManagerProps>(({
     };
   });
 
-  const handleReportPosition = (id: string, pos: THREE.Vector3) => {
+  const handleReportPosition = useCallback((id: string, pos: THREE.Vector3) => {
     mobPositionsRef.current.set(id, pos.clone());
-  };
+  }, []);
 
-  const handleZombieDeath = (id: string) => {
+  const handleZombieDeath = useCallback((id: string) => {
     setZombies(current => current.filter(m => m.id !== id));
     mobPositionsRef.current.delete(id);
-  };
+  }, []);
   
-  const handleCowDeath = (id: string) => {
+  const handleCowDeath = useCallback((id: string) => {
     setCows(current => current.filter(m => m.id !== id));
     mobPositionsRef.current.delete(id);
-  };
+  }, []);
 
   useFrame((state) => {
     const time = state.clock.getElapsedTime() + timeOffsetRef.current;
+    
+    // Cleanup Logic (Every 2 seconds)
+    if (state.clock.getElapsedTime() - lastCleanupTime.current > 2.0) {
+        lastCleanupTime.current = state.clock.getElapsedTime();
+        const DESPAWN_DIST_SQ = 64 * 64; // Despawn if > 64 blocks away
+
+        setZombies(prev => prev.filter(m => {
+            const pos = mobPositionsRef.current.get(m.id) || m.startPosition;
+            if (pos.distanceToSquared(playerPositionRef.current) > DESPAWN_DIST_SQ) {
+                mobPositionsRef.current.delete(m.id);
+                return false;
+            }
+            return true;
+        }));
+
+        setCows(prev => prev.filter(m => {
+             const pos = mobPositionsRef.current.get(m.id) || m.startPosition;
+             if (pos.distanceToSquared(playerPositionRef.current) > DESPAWN_DIST_SQ) {
+                 mobPositionsRef.current.delete(m.id);
+                 return false;
+             }
+             return true;
+        }));
+    }
+
     const cyclePos = (time % Config.CYCLE_DURATION) / Config.CYCLE_DURATION;
     const isNight = cyclePos >= 0.5;
 
-    if (time - lastSpawnTime.current > 5) {
-        lastSpawnTime.current = time;
+    // Spawn Logic
+    if (state.clock.getElapsedTime() - lastSpawnTime.current > 5) {
+        lastSpawnTime.current = state.clock.getElapsedTime();
 
         const angle = Math.random() * Math.PI * 2;
-        const distance = 12 + Math.random() * 8; 
+        const distance = 16 + Math.random() * 16; 
         const x = playerPositionRef.current.x + Math.cos(angle) * distance;
         const z = playerPositionRef.current.z + Math.sin(angle) * distance;
         const ix = Math.floor(x), iz = Math.floor(z);
@@ -128,11 +156,14 @@ export const MobManager = forwardRef<MobManagerHandle, MobManagerProps>(({
 
         if (y <= 0) return;
 
-        if (isNight && zombies.length < 5) {
+        // Cap max mobs
+        const MAX_MOBS = 8;
+
+        if (isNight && zombies.length < MAX_MOBS) {
             const id = `zombie-${Date.now()}-${Math.random()}`;
             const startPos = new THREE.Vector3(x, y + 2, z);
             setZombies(prev => [...prev, { id, startPosition: startPos }]);
-        } else if (!isNight && cows.length < 5) {
+        } else if (!isNight && cows.length < MAX_MOBS) {
             const biome = getBiome(noise, ix, iz);
             if (biome === 'FOREST') {
                 const id = `cow-${Date.now()}-${Math.random()}`;
@@ -153,6 +184,7 @@ export const MobManager = forwardRef<MobManagerHandle, MobManagerProps>(({
             playerPositionRef={playerPositionRef}
             modifiedBlocks={modifiedBlocks}
             terrainSeed={terrainSeed}
+            noise={noise}
             onDamagePlayer={onDamagePlayer}
             onDeath={handleZombieDeath}
             reportPosition={(pos) => handleReportPosition(mob.id, pos)}
@@ -167,6 +199,7 @@ export const MobManager = forwardRef<MobManagerHandle, MobManagerProps>(({
             playerPositionRef={playerPositionRef}
             modifiedBlocks={modifiedBlocks}
             terrainSeed={terrainSeed}
+            noise={noise}
             onDeath={handleCowDeath}
             reportPosition={(pos) => handleReportPosition(mob.id, pos)}
             damageEvent={damageEvents[mob.id]}

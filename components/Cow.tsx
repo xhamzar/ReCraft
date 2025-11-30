@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SimplexNoise } from '../engine/math/Noise';
@@ -17,6 +17,7 @@ interface CowProps {
   playerPositionRef: React.MutableRefObject<THREE.Vector3>;
   modifiedBlocks: React.MutableRefObject<Map<string, number>>;
   terrainSeed: number;
+  noise: SimplexNoise;
   onDeath: (id: string) => void;
   reportPosition: (pos: THREE.Vector3) => void;
   damageEvent?: DamageEvent;
@@ -27,12 +28,12 @@ const blackMaterial = new THREE.MeshStandardMaterial({ color: "#222222" });
 const hornMaterial = new THREE.MeshStandardMaterial({ color: "#d1c4a5" });
 const noseMaterial = new THREE.MeshStandardMaterial({ color: "#f7b5c5" });
 
-export const Cow: React.FC<CowProps> = ({ 
+export const Cow: React.FC<CowProps> = React.memo(({ 
   id, 
   startPosition, 
   playerPositionRef, 
   modifiedBlocks, 
-  terrainSeed,
+  noise,
   onDeath,
   reportPosition,
   damageEvent
@@ -50,23 +51,24 @@ export const Cow: React.FC<CowProps> = ({
   const bodyRef = useRef<THREE.Mesh>(null);
   const headRef = useRef<THREE.Group>(null);
   const tailRef = useRef<THREE.Mesh>(null);
-  const legFLRef = useRef<THREE.Mesh>(null); // Front-Left
-  const legFRRef = useRef<THREE.Mesh>(null); // Front-Right
-  const legBLRef = useRef<THREE.Mesh>(null); // Back-Left
-  const legBRRef = useRef<THREE.Mesh>(null); // Back-Right
+  const legFLRef = useRef<THREE.Mesh>(null); 
+  const legFRRef = useRef<THREE.Mesh>(null); 
+  const legBLRef = useRef<THREE.Mesh>(null); 
+  const legBRRef = useRef<THREE.Mesh>(null); 
 
-  const noise = useMemo(() => new SimplexNoise(terrainSeed), [terrainSeed]);
-  
   // AI State
   const targetDirection = useRef(new THREE.Vector3());
   const lastDecisionTime = useRef(0);
   
   const SPEED = 1.5;
   const COW_DIMS = { width: 0.9, height: 1.4 };
+  
+  const DIST_FREEZE = 2500; 
+  const DIST_SLOW = 400;    
 
   const handleTakeDamage = (direction: THREE.Vector3, isCritical: boolean) => {
     if (isDead.current) return;
-    damageFlashTime.current = isCritical ? 0.4 : 0.2; // Flash for 0.2 seconds
+    damageFlashTime.current = isCritical ? 0.4 : 0.2; 
 
     const knockbackStrength = isCritical ? 10 : 6;
     const damageAmount = isCritical ? 2 : 1;
@@ -93,12 +95,21 @@ export const Cow: React.FC<CowProps> = ({
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
+    
+    // --- LOD OPTIMIZATION ---
+    const distSq = position.current.distanceToSquared(playerPositionRef.current);
+    if (distSq > DIST_FREEZE) {
+        if (state.clock.frame % 60 === 0) reportPosition(position.current);
+        return; 
+    }
+    if (distSq > DIST_SLOW && state.clock.frame % 3 !== 0) return;
+    // ------------------------
+
     const dt = Math.min(delta, 0.05);
     
-    // Death Animation
     if (isDead.current) {
         if (deathAnimProgress.current >= 0 && deathAnimProgress.current < 1) {
-            deathAnimProgress.current += dt * 2; // 0.5s animation
+            deathAnimProgress.current += dt * 2; 
             const progress = Math.min(deathAnimProgress.current, 1);
             groupRef.current.rotation.z = progress * (Math.PI / 2);
             groupRef.current.position.y -= dt;
@@ -110,7 +121,6 @@ export const Cow: React.FC<CowProps> = ({
         return;
     }
     
-    // Damage Flash Effect
     if (damageFlashTime.current > 0) {
         damageFlashTime.current -= dt;
         const flashIntensity = Math.sin((damageFlashTime.current / 0.2) * Math.PI);
@@ -137,24 +147,21 @@ export const Cow: React.FC<CowProps> = ({
         const angle = Math.random() * Math.PI * 2;
         targetDirection.current.set(Math.sin(angle), 0, Math.cos(angle));
       } else {
-        targetDirection.current.set(0, 0, 0); // Stand still
+        targetDirection.current.set(0, 0, 0); 
       }
       lastDecisionTime.current = time;
     }
 
-    // Water avoidance logic
     if (targetDirection.current.lengthSq() > 0.1) {
         const checkDir = targetDirection.current.clone().normalize();
         const checkPos = position.current.clone().add(checkDir.multiplyScalar(0.8));
         const blockInFront = getBlock(checkPos.x, position.current.y, checkPos.z, noise, modifiedBlocks.current);
         
-        // Water is type 6, flows are 26-28
         const isWater = blockInFront === 6 || (blockInFront >= 26 && blockInFront <= 28);
         
         if (isWater) {
-            // Water ahead, stop and choose a new path immediately
             targetDirection.current.set(0, 0, 0);
-            lastDecisionTime.current = 0; // Force re-evaluation next frame
+            lastDecisionTime.current = 0; 
         }
     }
 
@@ -176,26 +183,20 @@ export const Cow: React.FC<CowProps> = ({
         modifiedBlocks.current
     );
     
-    // AI Jump Logic
     if (grounded && targetDirection.current.lengthSq() > 0.1) {
         const JUMP_FORCE = 6.0;
         const checkDir = targetDirection.current.clone().normalize();
         const checkPos = position.current.clone().add(checkDir.multiplyScalar(0.8));
         
-        // Check for a 1-block high obstacle at body height
         const wallBlock = getBlock(checkPos.x, position.current.y + 0.5, checkPos.z, noise, modifiedBlocks.current);
         
-        if (wallBlock !== 0 && wallBlock !== 6) { // It's a solid obstacle (not air or water)
-            // Check if space above is clear for the cow to jump into. Cow is 1.4m high.
-            // Needs clearance at y+1.5m and y+2.5m from its base to be safe.
+        if (wallBlock !== 0 && wallBlock !== 6) { 
             const headClearBlock = getBlock(checkPos.x, position.current.y + 1.5, checkPos.z, noise, modifiedBlocks.current);
             const aboveHeadClearBlock = getBlock(checkPos.x, position.current.y + 2.5, checkPos.z, noise, modifiedBlocks.current);
 
             if (headClearBlock === 0 && aboveHeadClearBlock === 0) {
-                // Space is clear, let's jump.
                 velocity.current.y = JUMP_FORCE;
             } else {
-                // It's a wall higher than 1 block, force new direction.
                 lastDecisionTime.current = 0; 
             }
         }
@@ -214,7 +215,6 @@ export const Cow: React.FC<CowProps> = ({
     const isMoving = velocity.current.lengthSq() > 0.1;
 
     if (isMoving) {
-        // Walking animation
         const walkTime = time * 8;
         if (legFLRef.current) legFLRef.current.rotation.x = Math.sin(walkTime) * 0.4;
         if (legBLRef.current) legBLRef.current.rotation.x = Math.sin(walkTime) * 0.4;
@@ -225,7 +225,6 @@ export const Cow: React.FC<CowProps> = ({
         if (headRef.current) headRef.current.rotation.x = Math.sin(walkTime) * 0.05;
         if (tailRef.current) tailRef.current.rotation.x = 0.3 + Math.sin(walkTime / 2) * 0.2;
     } else {
-        // Idle animation
         const idleTime = time * 0.8;
         if (legFLRef.current) legFLRef.current.rotation.x = 0;
         if (legFRRef.current) legFRRef.current.rotation.x = 0;
@@ -295,4 +294,4 @@ export const Cow: React.FC<CowProps> = ({
         {health < 5 && ( <mesh position={[0, 1.8, 0]}> <planeGeometry args={[health * 0.2, 0.1]} /> <meshBasicMaterial color="red" side={THREE.DoubleSide} /> </mesh> )}
     </group>
   );
-};
+});

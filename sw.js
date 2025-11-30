@@ -1,8 +1,8 @@
 const CACHE_NAME = "recraft-cache-v2";
 const ASSETS = [
-  "/", 
-  "/index.html",
-  "/manifest.json"
+  "./", 
+  "./index.html",
+  "./manifest.json"
 ];
 
 // Install Event: Cache aset inti
