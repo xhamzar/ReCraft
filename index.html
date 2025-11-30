@@ -3,12 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#3b3b3b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="ReCraft - A Voxel Adventure PWA" />
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3753/3753024.png">
+    
     <title>React Craft Pixel</title>
-    <!-- Gunakan path relatif ./ agar aman di berbagai struktur folder -->
+    
+    <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json" />
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -60,17 +67,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // Gunakan path relatif ./sw.js
-          navigator.serviceWorker.register('./sw.js').then(registration => {
-            console.log('SW registered: ', registration);
-          }).catch(registrationError => {
-            console.log('SW registration failed: ', registrationError);
-          });
-        });
-      }
-    </script>
   </body>
 </html>

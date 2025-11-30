@@ -1,11 +1,13 @@
 {
-  "name": "React Craft Pixel",
+  "name": "ReCraft",
   "short_name": "ReCraft",
-  "start_url": "./",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a1a",
   "theme_color": "#3b3b3b",
+  "description": "ReCraft - A Voxel Adventure PWA",
   "orientation": "landscape",
+  "scope": "/",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/3753/3753024.png",

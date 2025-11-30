@@ -1,87 +1,73 @@
-const CACHE_NAME = 'recraft-v1';
-const DYNAMIC_CACHE = 'recraft-dynamic-v1';
-
-// HANYA cache root. Jangan cache file spesifik seperti index.tsx atau index.html di sini
-// karena nama filenya bisa berubah saat build atau tidak ada di server produksi.
-const PRECACHE_URLS = [
-  './',
+const CACHE_NAME = "recraft-cache-v2";
+const ASSETS = [
+  "/", 
+  "/index.html",
+  "/manifest.json"
 ];
 
-self.addEventListener('install', (event) => {
+// Install Event: Cache aset inti
+self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // Tambahkan catch agar satu file gagal tidak membatalkan seluruh SW
-      return cache.addAll(PRECACHE_URLS).catch(err => {
-        console.warn('Precache warning:', err);
-      });
+    caches.open(CACHE_NAME).then(cache => {
+      // Gunakan addAll dengan catch agar satu kegagalan tidak membatalkan installasi
+      return cache.addAll(ASSETS).catch(err => console.warn("Precache warning:", err));
     })
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
+// Activate Event: Bersihkan cache versi lama
+self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then(keys => {
       return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME && cache !== DYNAMIC_CACHE) {
-            return caches.delete(cache);
-          }
-        })
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
       );
     })
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+// Fetch Event: Strategi Caching
+self.addEventListener("fetch", event => {
+  const request = event.request;
+  const url = new URL(request.url);
 
-  // Strategi: Stale-While-Revalidate untuk aset eksternal yang stabil
-  // Network-First untuk file aplikasi lokal
+  // Abaikan request non-GET atau ke scheme yang tidak didukung (seperti chrome-extension)
+  if (request.method !== 'GET' || !url.protocol.startsWith('http')) return;
 
-  // 1. Aset Eksternal (CDN, Fonts, Three.js) - Cache First / Stale-While-Revalidate
-  if (url.origin.includes('aistudiocdn.com') || 
-      url.origin.includes('fonts.googleapis.com') || 
-      url.origin.includes('fonts.gstatic.com') ||
-      url.origin.includes('cdn.tailwindcss.com') ||
-      url.origin.includes('cdn-icons-png.flaticon.com')) {
-    
+  // 1. HTML Documents (Network First, fallback ke Cache)
+  if (request.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request).then((networkResponse) => {
-           if (networkResponse && networkResponse.status === 200) {
-             const responseToCache = networkResponse.clone();
-             caches.open(DYNAMIC_CACHE).then((cache) => {
-               cache.put(event.request, responseToCache);
-             });
-           }
-           return networkResponse;
-        }).catch(() => { /* Abaikan error fetch jika offline */ });
-
-        return cachedResponse || fetchPromise;
-      })
+      fetch(request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          return res;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }
 
-  // 2. File Aplikasi Lokal - Network First, fallback to Cache
+  // 2. Aset Lainnya (Cache First)
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        // Hanya cache request sukses dan valid (bukan chrome-extension, dll)
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
-        }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-        return networkResponse;
-      })
-      .catch(() => {
-        // Jika offline, cari di cache
-        return caches.match(event.request);
-      })
+    caches.match(request).then(cached => {
+      return (
+        cached ||
+        fetch(request).then(res => {
+          // Hanya cache respon sukses (200) dan valid
+          if (res && res.status === 200 && (res.type === 'basic' || res.type === 'cors')) {
+             const clone = res.clone();
+             caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
+          return res;
+        }).catch(() => {
+           // Opsional: Return placeholder image jika fetch gambar gagal
+        })
+      );
+    })
   );
 });
