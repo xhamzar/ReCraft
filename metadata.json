@@ -1,0 +1,5 @@
+{
+  "name": "ReCraft",
+  "description": "A Minecraft-inspired terrain generator with mobile-friendly joystick controls and voxel physics.",
+  "requestFramePermissions": []
+}

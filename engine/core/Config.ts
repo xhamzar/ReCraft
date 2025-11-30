@@ -1,0 +1,15 @@
+
+export const Config = {
+  CHUNK_SIZE: 16,
+  RENDER_DISTANCE: 4,
+  NOISE_SCALE: 0.04,
+  WATER_LEVEL: 3,
+  CYCLE_DURATION: 900,
+  WORLD_HEIGHT_MIN: -20,
+  PLAYER: {
+    SPEED: 5,
+    JUMP_FORCE: 8.5,
+    WIDTH: 0.6,
+    HEIGHT: 1.8
+  }
+};

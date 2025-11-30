@@ -1,0 +1,5 @@
+
+[
+  { "id": "fishing_rod", "type": 100, "name": "Fishing Rod", "color": "#8B4513", "maxStack": 1 },
+  { "id": "raw_fish", "type": 101, "name": "Raw Fish", "color": "#608ba6", "maxStack": 64 }
+]
