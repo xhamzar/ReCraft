@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 export interface GameSettings {
   renderDistance: number;
@@ -18,10 +17,34 @@ interface SettingsMenuProps {
 }
 
 export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isOpen, onClose, settings, onUpdateSettings }) => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleChange);
+    // Initial check
+    setIsFullscreen(!!document.fullscreenElement);
+    return () => document.removeEventListener('fullscreenchange', handleChange);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleChange = (key: keyof GameSettings, value: number | boolean | string) => {
     onUpdateSettings({ ...settings, [key]: value });
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
   };
 
   const isPixel = settings.visualStyle === 'pixel';
@@ -46,6 +69,16 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isOpen, onClose, set
               className={`px-4 py-1 flex items-center justify-center text-white min-w-[100px] ${isPixel ? 'border-2 border-white pixel-btn bg-purple-700' : 'bg-indigo-600 hover:bg-indigo-500 rounded-md font-bold shadow-sm'}`}
             >
                {settings.visualStyle === 'pixel' ? 'PIXEL' : 'SMOOTH'}
+            </button>
+          </div>
+
+          <div className={`flex items-center justify-between p-3 ${isPixel ? 'bg-black/40 border-2 border-gray-700' : 'bg-slate-700/50 rounded-lg'}`}>
+            <span className="text-white text-xl uppercase">Screen Mode</span>
+            <button 
+              onClick={toggleFullscreen}
+              className={`px-4 py-1 flex items-center justify-center text-white min-w-[100px] ${isPixel ? 'border-2 border-white pixel-btn bg-blue-700' : 'bg-blue-600 hover:bg-blue-500 rounded-md font-bold shadow-sm'}`}
+            >
+               {isFullscreen ? 'FULL' : 'WINDOW'}
             </button>
           </div>
 

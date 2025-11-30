@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface MainMenuProps {
   onStartGame: () => void;
@@ -6,6 +6,28 @@ interface MainMenuProps {
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings }) => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleChange);
+    return () => document.removeEventListener('fullscreenchange', handleChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
+
   return (
     <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#3b3b3b] font-vt323">
       <div className="text-center">
@@ -27,6 +49,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings 
           className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1"
         >
           Options
+        </button>
+        
+        <button
+          onClick={toggleFullscreen}
+          className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-blue-700 hover:bg-blue-600"
+        >
+          {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
         </button>
       </div>
       
