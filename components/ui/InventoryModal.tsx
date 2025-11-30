@@ -219,48 +219,63 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
     >
         {/* Held item cursor */}
         {heldItem && (
-            <div ref={cursorRef} className="absolute top-0 left-0 pointer-events-none z-[120] -translate-x-1/2 -translate-y-1/2">
+            <div ref={cursorRef} className="fixed top-0 left-0 pointer-events-none z-[120] -translate-x-1/2 -translate-y-1/2 hidden sm:block">
                 <div className="w-12 h-12">
                     {HeldItemIcon && <div className="p-1 w-full h-full"><HeldItemIcon /></div>}
                     <span className="absolute bottom-0 right-0 bg-black/60 text-white text-xs px-1">{heldItem.count}</span>
                 </div>
             </div>
         )}
+        
+        {/* Mobile held item indicator */}
+        {heldItem && (
+             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] pointer-events-none sm:hidden">
+                <div className="w-16 h-16 bg-white/20 border-2 border-yellow-400 rounded-lg backdrop-blur-sm">
+                    {HeldItemIcon && <div className="p-2 w-full h-full"><HeldItemIcon /></div>}
+                    <span className="absolute bottom-0 right-0 bg-black/60 text-white text-sm px-1 font-bold">{heldItem.count}</span>
+                </div>
+                <div className="text-white text-center text-xs mt-1 bg-black/50 px-2 rounded">Selected</div>
+            </div>
+        )}
 
-        <div className="pixel-panel flex flex-col w-full max-w-3xl h-[85vh] mx-4 overflow-hidden shadow-2xl">
+        <div className="pixel-panel flex flex-col w-full max-w-3xl h-[85vh] sm:h-[80vh] max-h-[90dvh] mx-2 sm:mx-auto overflow-hidden shadow-2xl transition-all">
             {/* Header */}
-            <div className="flex justify-between items-center bg-[#222] p-4 border-b-4 border-black">
-                <h2 className="text-3xl text-white tracking-widest uppercase font-vt323">{isTableMode ? 'Crafting Table' : 'Inventory'}</h2>
-                <button onClick={handleClose} className="w-10 h-10 pixel-btn bg-red-600 hover:bg-red-500 flex items-center justify-center text-white text-xl"> X </button>
+            <div className="flex justify-between items-center bg-[#222] p-2 sm:p-4 border-b-4 border-black shrink-0">
+                <h2 className="text-2xl sm:text-3xl text-white tracking-widest uppercase font-vt323 truncate">{isTableMode ? 'Crafting Table' : 'Inventory'}</h2>
+                <button onClick={handleClose} className="w-8 h-8 sm:w-10 sm:h-10 pixel-btn bg-red-600 hover:bg-red-500 flex items-center justify-center text-white text-xl"> X </button>
             </div>
 
             {/* Tabs */}
-            <div className="flex px-4 pt-4 gap-2 bg-[#333]">
+            <div className="flex px-2 sm:px-4 pt-2 sm:pt-4 gap-1 sm:gap-2 bg-[#333] shrink-0 overflow-x-auto no-scrollbar">
                 {!isTableMode && <>
-                  <button onClick={() => setActiveTab('blocks')} className={`flex-1 py-2 text-xl font-vt323 uppercase transition-all ${activeTab === 'blocks' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Blocks </button>
-                  <button onClick={() => setActiveTab('items')} className={`flex-1 py-2 text-xl font-vt323 uppercase transition-all ${activeTab === 'items' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Items </button>
+                  <button onClick={() => setActiveTab('blocks')} className={`flex-1 py-2 px-1 text-lg sm:text-xl font-vt323 uppercase transition-all whitespace-nowrap ${activeTab === 'blocks' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Blocks </button>
+                  <button onClick={() => setActiveTab('items')} className={`flex-1 py-2 px-1 text-lg sm:text-xl font-vt323 uppercase transition-all whitespace-nowrap ${activeTab === 'items' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Items </button>
                 </>}
-                <button onClick={() => setActiveTab('crafting')} className={`flex-1 py-2 text-xl font-vt323 uppercase transition-all ${activeTab === 'crafting' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Crafting </button>
+                <button onClick={() => setActiveTab('crafting')} className={`flex-1 py-2 px-1 text-lg sm:text-xl font-vt323 uppercase transition-all whitespace-nowrap ${activeTab === 'crafting' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Crafting </button>
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 bg-[#555] p-4 overflow-y-auto custom-scrollbar border-4 border-black m-4 mt-0">
+            <div className="flex-1 bg-[#555] p-2 sm:p-4 overflow-y-auto custom-scrollbar border-4 border-black m-2 sm:m-4 mt-0">
                 {activeTab === 'crafting' ? (
-                     <div className="flex flex-col items-center justify-center h-full gap-4">
+                     <div className="flex flex-col items-center justify-center min-h-full gap-4 py-4">
                          <div className={`grid gap-1 ${gridSize === 9 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                              {craftingGrid.map((item, i) => {
                                  const itemDef = getItemDef(item.id);
                                  const Icon = itemDef?.icon;
                                  return (
-                                     <button key={i} onClick={() => handleSlotClick(i, 'grid')} className="w-14 h-14 pixel-btn bg-[#444] relative">
+                                     <button key={i} onClick={() => handleSlotClick(i, 'grid')} className="w-14 h-14 sm:w-16 sm:h-16 pixel-btn bg-[#444] relative active:bg-[#555]">
                                          {item.id !== BLOCK.AIR && Icon && <div className="w-full h-full p-2"><Icon /></div>}
                                          {item.count > 1 && <span className="absolute bottom-0 right-0 text-white text-xs px-1 bg-black/60">{item.count}</span>}
                                      </button>
                                  );
                              })}
                          </div>
-                         <div className="w-full h-1 bg-black/50 my-2" />
-                         <button onClick={handleOutputClick} className="w-20 h-20 pixel-btn bg-[#222] relative">
+                         
+                         <div className="flex flex-col items-center justify-center">
+                            <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[15px] border-t-white mb-2"></div>
+                         </div>
+
+                         <button onClick={handleOutputClick} className="w-20 h-20 sm:w-24 sm:h-24 pixel-btn bg-[#222] relative active:bg-[#333]">
                               {outputSlot && (() => {
                                   const itemDef = getItemDef(outputSlot.id);
                                   const Icon = itemDef?.icon;
@@ -274,17 +289,17 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                          </button>
                      </div>
                 ) : (
-                    <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-9 gap-2">
+                    <div className="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-9 gap-1 sm:gap-2">
                         {filteredInventory.map(item => {
                             const IconComponent = item.icon;
                             return (
                                 <button
                                     key={item.id}
                                     onClick={() => handleCreativeItemClick(item.id)}
-                                    className="aspect-square relative group pixel-btn bg-[#444] hover:bg-[#666] flex items-center justify-center"
+                                    className="aspect-square relative group pixel-btn bg-[#444] hover:bg-[#666] flex items-center justify-center active:scale-95"
                                 >
-                                     {IconComponent && <div className="w-full h-full p-2"><IconComponent /></div>}
-                                     <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black text-white text-sm px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 font-vt323 border border-white">
+                                     {IconComponent && <div className="w-full h-full p-1.5 sm:p-2"><IconComponent /></div>}
+                                     <span className="hidden sm:block absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black text-white text-sm px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 font-vt323 border border-white">
                                         {item.name}
                                      </span>
                                 </button>
@@ -295,8 +310,9 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
             </div>
 
             {/* Hotbar Section */}
-            <div className="p-4 bg-[#333] border-t-4 border-black">
-                <div className="flex justify-center gap-2 overflow-x-auto pb-2">
+            <div className="p-2 sm:p-4 bg-[#333] border-t-4 border-black shrink-0">
+                <div className="text-center text-gray-400 mb-1 text-sm font-vt323">Tap hotbar slot to place/swap</div>
+                <div className="flex justify-center gap-1 sm:gap-2 overflow-x-auto pb-2 no-scrollbar">
                     {hotbar.map((item, index) => {
                         const blockData = getItemDef(item.id);
                         const IconComponent = blockData?.icon;
@@ -304,11 +320,11 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                             <button
                                 key={index}
                                 onClick={() => handleSlotClick(index, 'hotbar')}
-                                className="w-14 h-14 flex-shrink-0 pixel-btn relative flex items-center justify-center bg-[#444]"
+                                className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 pixel-btn relative flex items-center justify-center bg-[#444] active:bg-[#555]"
                             >
-                                {item.count > 0 && IconComponent && <div className="p-2 w-full h-full"><IconComponent /></div>}
+                                {item.count > 0 && IconComponent && <div className="p-1.5 sm:p-2 w-full h-full"><IconComponent /></div>}
                                 {item.count > 1 && <span className="absolute bottom-0 right-0 text-white text-[10px] font-bold px-1 bg-black/50">{item.count}</span>}
-                                <span className="absolute top-0.5 left-1 text-[10px] text-white/50 font-mono">{index + 1}</span>
+                                <span className="absolute top-0.5 left-1 text-[8px] sm:text-[10px] text-white/50 font-mono">{index + 1}</span>
                             </button>
                         );
                     })}

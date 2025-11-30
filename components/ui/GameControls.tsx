@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Joystick } from '../Joystick';
 
@@ -34,21 +33,23 @@ const CrouchIcon = () => (
 export const GameControls: React.FC<GameControlsProps> = ({ onMove, onAction, onJump, onCrouch, isCrouching, visualStyle = 'pixel' }) => {
   const isPixel = visualStyle === 'pixel';
   
+  // Smaller buttons on mobile default, larger on sm screens
   const jumpBtnClass = isPixel 
-    ? "w-16 h-16 pixel-btn active:bg-gray-400 active:translate-y-1"
-    : "w-16 h-16 rounded-full bg-white/20 backdrop-blur-md border border-white/30 active:bg-white/30 active:scale-95 shadow-lg";
+    ? "w-14 h-14 sm:w-16 sm:h-16 pixel-btn active:bg-gray-400 active:translate-y-1"
+    : "w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white/20 backdrop-blur-md border border-white/30 active:bg-white/30 active:scale-95 shadow-lg";
 
   const attackBtnClass = isPixel
-    ? "w-24 h-24 bg-red-600 border-4 border-red-900 shadow-[inset_4px_4px_0_rgba(255,255,255,0.2)] active:shadow-none active:bg-red-700 active:translate-y-1"
-    : "w-24 h-24 rounded-full bg-red-500/80 backdrop-blur-md border border-white/30 active:bg-red-600/90 active:scale-95 shadow-xl";
+    ? "w-20 h-20 sm:w-24 sm:h-24 bg-red-600 border-4 border-red-900 shadow-[inset_4px_4px_0_rgba(255,255,255,0.2)] active:shadow-none active:bg-red-700 active:translate-y-1"
+    : "w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-red-500/80 backdrop-blur-md border border-white/30 active:bg-red-600/90 active:scale-95 shadow-xl";
     
   const crouchBtnClass = isPixel
-    ? `w-14 h-14 pixel-btn transition-transform ${isCrouching ? 'bg-gray-500 translate-y-1 shadow-[inset_2px_2px_0px_0px_#222]' : 'active:bg-gray-400 active:translate-y-1'}`
-    : `w-14 h-14 rounded-full backdrop-blur-md border border-white/30 transition-all ${isCrouching ? 'bg-white/40 scale-95 shadow-inner' : 'bg-white/20 active:bg-white/30 active:scale-95 shadow-lg'}`;
+    ? `w-12 h-12 sm:w-14 sm:h-14 pixel-btn transition-transform ${isCrouching ? 'bg-gray-500 translate-y-1 shadow-[inset_2px_2px_0px_0px_#222]' : 'active:bg-gray-400 active:translate-y-1'}`
+    : `w-12 h-12 sm:w-14 sm:h-14 rounded-full backdrop-blur-md border border-white/30 transition-all ${isCrouching ? 'bg-white/40 scale-95 shadow-inner' : 'bg-white/20 active:bg-white/30 active:scale-95 shadow-lg'}`;
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-end">
-        <div className="flex justify-between items-end px-4 sm:px-8 pb-20 sm:pb-24 w-full">
+        {/* Adjusted padding to clear inventory bar + safe area */}
+        <div className="flex justify-between items-end px-2 sm:px-8 pb-24 sm:pb-32 w-full">
             
             {/* Left: Joystick */}
             <div className="pointer-events-auto">
@@ -56,7 +57,7 @@ export const GameControls: React.FC<GameControlsProps> = ({ onMove, onAction, on
             </div>
 
             {/* Right: Actions */}
-            <div className="pointer-events-auto flex items-end gap-3">
+            <div className="pointer-events-auto flex items-end gap-2 sm:gap-4">
                  <button 
                     className={`${crouchBtnClass} flex items-center justify-center`}
                     onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onCrouch(); }}

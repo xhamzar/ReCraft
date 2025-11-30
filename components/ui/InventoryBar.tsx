@@ -24,14 +24,17 @@ export const InventoryBar: React.FC<InventoryBarProps> = ({
   onDrop
 }) => {
   return (
-    <div className="absolute bottom-2 left-0 right-0 z-50 flex justify-center pointer-events-none pb-safe">
+    <div 
+        className="absolute bottom-2 left-0 right-0 z-50 flex justify-center pointer-events-none"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
         {/* Reduced padding and gap for mobile compact view */}
-        <div className="pixel-panel flex items-center gap-1 p-1.5 pointer-events-auto max-w-[98vw] overflow-x-auto no-scrollbar">
+        <div className="pixel-panel flex items-center gap-1 p-1 sm:p-1.5 pointer-events-auto max-w-full mx-1 sm:max-w-[98vw] overflow-x-auto no-scrollbar">
             <button 
                 onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onDrop(); }}
                 onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onDrop(); }}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDrop(); }}
-                className="w-9 h-9 sm:w-14 sm:h-14 pixel-btn flex items-center justify-center active:scale-95 bg-gray-600 hover:bg-gray-500 flex-shrink-0"
+                className="w-8 h-8 sm:w-14 sm:h-14 pixel-btn flex items-center justify-center active:scale-95 bg-gray-600 hover:bg-gray-500 flex-shrink-0"
                 style={{ touchAction: 'none' }}
                 aria-label="Drop Item"
             >
@@ -49,7 +52,7 @@ export const InventoryBar: React.FC<InventoryBarProps> = ({
                         <button 
                             key={index}
                             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onSelectSlot(index); }}
-                            className={`relative w-9 h-9 sm:w-14 sm:h-14 flex-shrink-0 pixel-btn transition-transform ${isActive ? 'bg-gray-400 scale-105 z-10 border-white' : ''} ${isEnchanted ? 'animate-pulse border-purple-500' : ''}`}
+                            className={`relative w-8 h-8 sm:w-14 sm:h-14 flex-shrink-0 pixel-btn transition-transform ${isActive ? 'bg-gray-400 scale-105 z-10 border-white' : ''} ${isEnchanted ? 'animate-pulse border-purple-500' : ''}`}
                             style={{ touchAction: 'none' }}
                         >
                             {blockData && item.count > 0 ? (
@@ -62,7 +65,7 @@ export const InventoryBar: React.FC<InventoryBarProps> = ({
                                         <div className="absolute inset-1.5 border-2 border-black/20" style={{ backgroundColor: blockData.color }} />
                                     )}
                                     {item.count > 1 && (
-                                        <span className="absolute bottom-0 right-0 text-white text-[10px] sm:text-xs font-bold leading-none px-1 bg-black/50 rounded-tl-sm">
+                                        <span className="absolute bottom-0 right-0 text-white text-[9px] sm:text-xs font-bold leading-none px-1 bg-black/50 rounded-tl-sm">
                                             {item.count}
                                         </span>
                                     )}
@@ -76,9 +79,9 @@ export const InventoryBar: React.FC<InventoryBarProps> = ({
             <div className="w-0.5 h-6 bg-white/20 mx-0.5" />
             <button 
                 onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onOpenInventory(); }}
-                className="w-9 h-9 sm:w-14 sm:h-14 pixel-btn flex items-center justify-center active:scale-95 flex-shrink-0"
+                className="w-8 h-8 sm:w-14 sm:h-14 pixel-btn flex items-center justify-center active:scale-95 flex-shrink-0"
             >
-                <span className="text-white font-bold text-xl sm:text-2xl leading-none mb-1 sm:mb-2 tracking-widest">...</span>
+                <span className="text-white font-bold text-lg sm:text-2xl leading-none mb-1 sm:mb-2 tracking-widest">...</span>
             </button>
         </div>
     </div>
