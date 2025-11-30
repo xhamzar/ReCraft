@@ -5,7 +5,7 @@ export const LoadingScreen: React.FC = () => {
     <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#1a1a1a] font-vt323">
       <div className="text-center">
         <h1 className="text-6xl font-black text-white mb-8 tracking-widest">
-          Go-Craft
+          React Craft
         </h1>
         <p className="text-2xl text-gray-400 mb-12 uppercase tracking-wider">
           Generating Terrain...

@@ -1,19 +1,19 @@
 const CACHE_NAME = 'recraft-v1';
 const DYNAMIC_CACHE = 'recraft-dynamic-v1';
 
-// Files to precache immediately
+// HANYA cache root. Jangan cache file spesifik seperti index.tsx atau index.html di sini
+// karena nama filenya bisa berubah saat build atau tidak ada di server produksi.
 const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/index.tsx',
-  // We cannot easily hardcode the specific CDN versions here as they change,
-  // so we rely on the dynamic runtime caching logic below to catch them.
+  './',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_URLS);
+      // Tambahkan catch agar satu file gagal tidak membatalkan seluruh SW
+      return cache.addAll(PRECACHE_URLS).catch(err => {
+        console.warn('Precache warning:', err);
+      });
     })
   );
   self.skipWaiting();
@@ -37,41 +37,39 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Strategy: Stale-While-Revalidate for most things, 
-  // Cache-First for Fonts and immutable CDN assets.
+  // Strategi: Stale-While-Revalidate untuk aset eksternal yang stabil
+  // Network-First untuk file aplikasi lokal
 
-  // 1. External Assets (CDN, Fonts, Three.js) - Cache First
+  // 1. Aset Eksternal (CDN, Fonts, Three.js) - Cache First / Stale-While-Revalidate
   if (url.origin.includes('aistudiocdn.com') || 
       url.origin.includes('fonts.googleapis.com') || 
       url.origin.includes('fonts.gstatic.com') ||
-      url.origin.includes('cdn.tailwindcss.com')) {
+      url.origin.includes('cdn.tailwindcss.com') ||
+      url.origin.includes('cdn-icons-png.flaticon.com')) {
     
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        return fetch(event.request).then((networkResponse) => {
-          // Check for valid response
-          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic' && networkResponse.type !== 'cors' && networkResponse.type !== 'opaque') {
-            return networkResponse;
-          }
-          
-          const responseToCache = networkResponse.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-          return networkResponse;
-        });
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
+           if (networkResponse && networkResponse.status === 200) {
+             const responseToCache = networkResponse.clone();
+             caches.open(DYNAMIC_CACHE).then((cache) => {
+               cache.put(event.request, responseToCache);
+             });
+           }
+           return networkResponse;
+        }).catch(() => { /* Abaikan error fetch jika offline */ });
+
+        return cachedResponse || fetchPromise;
       })
     );
     return;
   }
 
-  // 2. Local App Files - Network First, fall back to cache
+  // 2. File Aplikasi Lokal - Network First, fallback to Cache
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
+        // Hanya cache request sukses dan valid (bukan chrome-extension, dll)
         if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse;
         }
@@ -82,6 +80,7 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       })
       .catch(() => {
+        // Jika offline, cari di cache
         return caches.match(event.request);
       })
   );

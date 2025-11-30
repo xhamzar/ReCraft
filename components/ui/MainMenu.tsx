@@ -32,9 +32,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings 
     <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#3b3b3b] font-vt323">
       <div className="text-center">
         <h1 className="text-8xl font-black text-white mb-4 tracking-widest drop-shadow-[6px_6px_0_rgba(0,0,0,0.5)]">
-          Go-Craft
+          React Craft
         </h1>
-        <p className="text-2xl text-gray-300 mb-12 uppercase tracking-wider">by Hamzar</p>
+        <p className="text-2xl text-gray-300 mb-12 uppercase tracking-wider">A Voxel Adventure</p>
       </div>
 
       <div className="flex flex-col gap-4 w-full max-w-xs">

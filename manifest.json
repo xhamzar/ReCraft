@@ -1,7 +1,7 @@
 {
   "name": "React Craft Pixel",
   "short_name": "ReCraft",
-  "start_url": ".",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#1a1a1a",
   "theme_color": "#3b3b3b",
