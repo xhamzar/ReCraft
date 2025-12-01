@@ -1,4 +1,5 @@
 
+
 import React, { useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
@@ -32,7 +33,7 @@ import { MainMenu } from './components/ui/MainMenu';
 import { LoadingScreen } from './components/ui/LoadingScreen';
 import { ChatBox } from './components/ui/ChatBox';
 
-import { ControlState, ItemStack, InitPayload, PlayerUpdatePayload, BlockUpdatePayload, ChatPayload, TimeSyncPayload } from './types';
+import { ControlState, ItemStack, InitPayload, PlayerUpdatePayload, BlockUpdatePayload, ChatPayload } from './types';
 import { BLOCK } from './engine/world/BlockRegistry';
 import { Config } from './engine/core/Config';
 import { INVENTORY, getItemDef } from './engine/items/ItemRegistry';
@@ -57,67 +58,6 @@ const FluidSimulator = React.memo(({
         if (time - lastUpdate.current > 1.0) {
             updateFluids(playerPositionRef.current, noise, modifiedBlocks.current, updateChunkVersions);
             lastUpdate.current = time;
-        }
-    });
-
-    return null;
-});
-
-// Component to handle Time Sync logic inside Canvas
-const MultiplayerSyncManager = React.memo(({ 
-    isHost, 
-    broadcastData, 
-    timeOffsetRef, 
-    serverTimeTargetRef,
-    reportCurrentTime
-}: { 
-    isHost: boolean, 
-    broadcastData: (data: any) => void, 
-    timeOffsetRef: React.MutableRefObject<number>,
-    serverTimeTargetRef: React.MutableRefObject<number | null>,
-    reportCurrentTime: (time: number) => void
-}) => {
-    const { clock } = useThree();
-    const lastSyncTime = useRef(0);
-
-    useFrame(() => {
-        const localElapsed = clock.getElapsedTime();
-        const totalGameTime = localElapsed + timeOffsetRef.current;
-
-        // HOST LOGIC: Broadcast time periodically
-        if (isHost) {
-            // Report current time to parent App for INIT packets
-            reportCurrentTime(totalGameTime);
-
-            if (localElapsed - lastSyncTime.current > 5.0) { // Sync every 5 seconds
-                lastSyncTime.current = localElapsed;
-                broadcastData({ type: 'TIME_SYNC', payload: { time: totalGameTime } });
-            }
-        } 
-        // CLIENT LOGIC: Sync to Host time
-        else {
-            if (serverTimeTargetRef.current !== null) {
-                const targetTime = serverTimeTargetRef.current;
-                
-                // Calculate what the offset SHOULD be to match server time
-                // totalGameTime = localElapsed + offset
-                // offset = totalGameTime - localElapsed
-                const neededOffset = targetTime - localElapsed;
-
-                // Check difference to avoid jitter
-                const diff = Math.abs(timeOffsetRef.current - neededOffset);
-
-                if (diff > 1.0) {
-                    // Hard snap if drift is large (e.g. Host slept)
-                    timeOffsetRef.current = neededOffset;
-                } else {
-                    // Smooth lerp for small drift
-                    timeOffsetRef.current = THREE.MathUtils.lerp(timeOffsetRef.current, neededOffset, 0.05);
-                }
-
-                // Clear target after consuming
-                serverTimeTargetRef.current = null;
-            }
         }
     });
 
@@ -196,13 +136,6 @@ export default function App() {
   const [remotePlayers, setRemotePlayers] = useState<Map<string, PlayerUpdatePayload>>(new Map());
   const peerInstance = useRef<Peer | null>(null);
   
-  // Identity State
-  const [username, setUsername] = useState("Player");
-  const [playerColor] = useState(() => {
-    const colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e'];
-    return colors[Math.floor(Math.random() * colors.length)];
-  });
-
   // Connection / Loading State
   const [isConnecting, setIsConnecting] = useState(false);
   const [loadingText, setLoadingText] = useState("Loading...");
@@ -221,10 +154,6 @@ export default function App() {
   const gameTimeManagerRef = useRef<GameTimeManagerHandle>(null);
   const itemDropManagerRef = useRef<ItemDropManagerHandle>(null);
   const timeOffsetRef = useRef(0);
-  
-  // Time Sync Refs
-  const serverTimeTargetRef = useRef<number | null>(null);
-  const currentGameTimeRef = useRef<number>(0);
   
   const [hotbar, setHotbar] = useState<ItemStack[]>(new Array(7).fill({ id: BLOCK.AIR, count: 0 }));
   const [activeSlot, setActiveSlot] = useState(0);
@@ -316,8 +245,7 @@ export default function App() {
                     const initData: InitPayload = {
                         seed,
                         modifiedBlocks: Array.from(modifiedBlocksRef.current.entries()),
-                        spawnPos: playerPositionRef.current,
-                        time: currentGameTimeRef.current // Send current world time
+                        spawnPos: playerPositionRef.current
                     };
                     conn.send({ type: 'INIT', payload: initData });
                     setToastMessage(`Player joined!`);
@@ -353,9 +281,6 @@ export default function App() {
           const payload = data.payload as InitPayload;
           setSeed(payload.seed);
           modifiedBlocksRef.current = new Map(payload.modifiedBlocks);
-          
-          // Initial Time Sync
-          serverTimeTargetRef.current = payload.time;
           
           // Teleport to spawn/host position immediately
           if (payload.spawnPos) {
@@ -399,14 +324,9 @@ export default function App() {
                });
           }
       }
-      else if (data.type === 'TIME_SYNC') {
-          const payload = data.payload as TimeSyncPayload;
-          serverTimeTargetRef.current = payload.time;
-      }
   }, [isHost, connectedPeers]);
 
-  const handleHostGame = (name: string) => {
-      setUsername(name || "Player");
+  const handleHostGame = () => {
       setIsMultiplayer(true);
       setIsHost(true);
       setIsConnecting(true);
@@ -414,10 +334,9 @@ export default function App() {
       initPeer(); // Auto-generate ID
   };
 
-  const handleJoinGame = (hostId: string, name: string) => {
+  const handleJoinGame = (hostId: string) => {
       if (!hostId.trim()) return;
       
-      setUsername(name || "Player");
       setIsMultiplayer(true);
       setIsHost(false);
       setIsConnecting(true);
@@ -473,8 +392,7 @@ export default function App() {
       }
   };
   
-  const handleStartGame = (name: string) => {
-      setUsername(name || "Player");
+  const handleStartGame = () => {
       setIsMultiplayer(false);
       setGameState('playing');
   };
@@ -491,7 +409,7 @@ export default function App() {
       const payload: ChatPayload = {
           id: Math.random().toString(36).substr(2, 9),
           senderId: myPeerId,
-          senderName: username, // Use configured username
+          senderName: "Player", // Default Name
           message,
           timestamp: Date.now()
       };
@@ -516,14 +434,12 @@ export default function App() {
               pos: playerPositionRef.current.toArray() as [number,number,number],
               rot: playerRotationRef.current.toArray() as [number,number,number,number],
               animState: { walking: false, crouching: isCrouching }, // Simplified anim state
-              username: username,
-              color: playerColor
           };
           broadcastData({ type: 'PLAYER_UPDATE', payload });
       }, 50);
 
       return () => clearInterval(interval);
-  }, [isMultiplayer, gameState, myPeerId, broadcastData, isCrouching, username, playerColor]);
+  }, [isMultiplayer, gameState, myPeerId, broadcastData, isCrouching]);
 
 
   useEffect(() => {
@@ -982,15 +898,7 @@ export default function App() {
                 isMultiplayer={isMultiplayer}
                 isHost={isHost}
             />
-            {isMultiplayer && (
-                <MultiplayerSyncManager 
-                    isHost={isHost} 
-                    broadcastData={broadcastData} 
-                    timeOffsetRef={timeOffsetRef}
-                    serverTimeTargetRef={serverTimeTargetRef}
-                    reportCurrentTime={(t) => { currentGameTimeRef.current = t; }}
-                />
-            )}
+            
             <DayNightCycle shadowsEnabled={settings.shadows} timeOffsetRef={timeOffsetRef} />
             <fog attach="fog" args={['#87CEEB', 50, 180]} />
             
@@ -1010,8 +918,6 @@ export default function App() {
                     position={new THREE.Vector3(...rp.pos)}
                     quaternion={new THREE.Quaternion(...rp.rot)}
                     isCrouching={rp.animState.crouching}
-                    username={rp.username}
-                    color={rp.color}
                 />
             ))}
 

@@ -1,7 +1,7 @@
 
+
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { BLOCK_TEXTURES } from '../engine/graphics/TextureGenerator';
 
@@ -9,11 +9,9 @@ interface RemotePlayerProps {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
   isCrouching: boolean;
-  username: string;
-  color: string;
 }
 
-export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion, isCrouching, username, color }) => {
+export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion, isCrouching }) => {
   const groupRef = useRef<THREE.Group>(null);
   
   // Animation refs
@@ -76,7 +74,7 @@ export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion
         </mesh>
         <mesh ref={bodyRef} position={[0, 1.125, 0]} castShadow receiveShadow>
             <boxGeometry args={[0.5, 0.75, 0.25]} />
-            <meshStandardMaterial map={BLOCK_TEXTURES.player_torso} color={color} /> 
+            <meshStandardMaterial map={BLOCK_TEXTURES.player_torso} /> 
         </mesh>
         <mesh ref={leftArmRef} position={[-0.375, 1.125, 0]} geometry={new THREE.BoxGeometry(0.25, 0.75, 0.25)} castShadow receiveShadow>
             <meshStandardMaterial map={BLOCK_TEXTURES.player_arm} />
@@ -90,24 +88,6 @@ export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion
         <mesh ref={rightLegRef} position={[0.125, 0.375, 0]} geometry={new THREE.BoxGeometry(0.25, 0.75, 0.25)} castShadow receiveShadow>
             <meshStandardMaterial map={BLOCK_TEXTURES.player_leg} />
         </mesh>
-      </group>
-      
-      {/* Nametag */}
-      <group position={[0, 2.3, 0]}>
-         {/* Background for text legibility */}
-         <mesh position={[0, 0, -0.01]}>
-             <planeGeometry args={[username.length * 0.15 + 0.2, 0.3]} />
-             <meshBasicMaterial color="black" opacity={0.4} transparent />
-         </mesh>
-         <Text
-            fontSize={0.2}
-            color="white"
-            anchorX="center"
-            anchorY="middle"
-            font="https://fonts.gstatic.com/s/vt323/v17/pxiKyp0ih+F2yuMtiGx2.woff" // VT323 Font
-         >
-            {username}
-         </Text>
       </group>
     </group>
   );

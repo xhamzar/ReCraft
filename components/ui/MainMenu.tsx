@@ -1,18 +1,18 @@
 
+
 import React, { useState, useEffect } from 'react';
 
 interface MainMenuProps {
-  onStartGame: (username: string) => void;
+  onStartGame: () => void;
   onOpenSettings: () => void;
-  onHostGame: (username: string) => void;
-  onJoinGame: (id: string, username: string) => void;
+  onHostGame: () => void;
+  onJoinGame: (id: string) => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings, onHostGame, onJoinGame }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showJoinInput, setShowJoinInput] = useState(false);
   const [hostId, setHostId] = useState('');
-  const [username, setUsername] = useState(() => `Player${Math.floor(Math.random() * 1000)}`);
 
   useEffect(() => {
     const handleChange = () => {
@@ -45,22 +45,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
 
       <div className="flex flex-col gap-4 w-full max-w-xs">
         
-        {/* Username Input - Always Visible */}
-        <div className="flex flex-col gap-1 mb-2">
-            <label className="text-gray-400 text-sm uppercase">Username</label>
-            <input 
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value.substring(0, 12))}
-                className="w-full p-2 text-black font-vt323 text-xl bg-gray-200 border-4 border-black outline-none text-center uppercase"
-                placeholder="PLAYER"
-            />
-        </div>
-
         {!showJoinInput ? (
             <>
                 <button
-                onClick={() => onStartGame(username)}
+                onClick={() => onStartGame()}
                 className="w-full py-4 pixel-btn text-white font-bold text-3xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-green-700 hover:bg-green-600"
                 >
                 Single Player
@@ -68,7 +56,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
                 
                 <div className="flex gap-2">
                     <button
-                        onClick={() => onHostGame(username)}
+                        onClick={() => onHostGame()}
                         className="flex-1 py-3 pixel-btn text-white font-bold text-xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-purple-700 hover:bg-purple-600"
                     >
                         Host Game
@@ -105,7 +93,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
                     className="w-full p-4 text-black font-vt323 text-2xl bg-gray-200 border-4 border-black outline-none"
                  />
                  <button
-                    onClick={() => onJoinGame(hostId, username)}
+                    onClick={() => onJoinGame(hostId)}
                     disabled={!hostId}
                     className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-green-700 hover:bg-green-600 disabled:opacity-50"
                 >
