@@ -1,7 +1,7 @@
 import { TOOLS_DATA } from '../../data/items/tools';
 import { TERRAIN_DATA } from '../../data/blocks/terrain';
 import { BLOCK } from '../world/BlockRegistry';
-import { FishingRodIcon, RawFishIcon, WoodSwordIcon, SeedsIcon, WheatIcon, FenceIcon, StickIcon, BlockIcon, StairIcon, RawBeefIcon } from '../ui/icons';
+import { FishingRodIcon, RawFishIcon, WoodSwordIcon, SeedsIcon, WheatIcon, FenceIcon, StickIcon, BlockIcon, StairIcon, RawBeefIcon, EnchantedBookIcon } from '../ui/icons';
 import { BLOCK_TEXTURES } from '../graphics/TextureGenerator';
 import React from 'react';
 import * as THREE from 'three';
@@ -27,6 +27,7 @@ TERRAIN_DATA.forEach((def: any) => {
         if (def.id === 'grass') textureKey = 'grass_side';
         else if (def.id === 'wood') textureKey = 'wood_side';
         else if (def.id === 'crafting_table') textureKey = 'crafting_table_top';
+        else if (def.id === 'enchanting_table') textureKey = 'enchanting_table_top';
         else if (def.id === 'door_bottom') textureKey = 'door';
         else if (def.id === 'bed_item') textureKey = 'bed_head';
 
@@ -82,6 +83,14 @@ INVENTORY.push({
     color: '#8B4513',
     isBlock: false,
     icon: StickIcon
+});
+
+INVENTORY.push({
+    id: BLOCK.ENCHANTED_BOOK,
+    name: 'Enchanted Book',
+    color: '#9333ea',
+    isBlock: false,
+    icon: EnchantedBookIcon
 });
 
 

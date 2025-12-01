@@ -17,6 +17,7 @@ export const BLOCK_DEFS: Record<number, BlockDef> = {};
 BLOCK['STAIR'] = 14; // The generic item in the inventory
 BLOCK['COBBLESTONE_STAIR'] = 200; // Virtual ID for inventory item to avoid collision with terrain IDs
 BLOCK['STICK'] = 201;
+BLOCK['ENCHANTED_BOOK'] = 202; // New ID for Enchanted Book
 BLOCK['RAW_BEEF'] = 105;
 BLOCK['ENCHANTING_TABLE'] = 72;
 

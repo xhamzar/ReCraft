@@ -1,15 +1,17 @@
 
 import React from 'react';
+import { GameMode } from '../../types';
 
 interface HUDProps {
   health: number;
   onOpenSettings: () => void;
   onChat: () => void;
+  gameMode?: GameMode;
 }
 
 const PixelHeartIcon: React.FC<{ filled: boolean }> = ({ filled }) => (
-  <div className={`w-5 h-5 relative ${filled ? 'opacity-100' : 'opacity-40'}`}>
-     <svg viewBox="0 0 10 10" className="w-full h-full fill-current text-red-600 drop-shadow-sm">
+  <div className={`w-6 h-6 relative ${filled ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+     <svg viewBox="0 0 10 10" className="w-full h-full fill-current text-red-600 drop-shadow-[2px_2px_0_rgba(0,0,0,0.75)]">
         <rect x="2" y="1" width="2" height="1" />
         <rect x="6" y="1" width="2" height="1" />
         <rect x="1" y="2" width="4" height="1" />
@@ -19,6 +21,8 @@ const PixelHeartIcon: React.FC<{ filled: boolean }> = ({ filled }) => (
         <rect x="2" y="5" width="6" height="1" />
         <rect x="3" y="6" width="4" height="1" />
         <rect x="4" y="7" width="2" height="1" />
+        {/* Shine/Reflection for depth */}
+        <rect x="2" y="2" width="1" height="1" fill="white" fillOpacity="0.4" />
      </svg>
   </div>
 );
@@ -40,17 +44,14 @@ const ChatIcon = () => (
     </svg>
 );
 
-export const HUD: React.FC<HUDProps> = ({ health, onOpenSettings, onChat }) => {
+export const HUD: React.FC<HUDProps> = ({ health, onOpenSettings, onChat, gameMode = 'survival' }) => {
   return (
     <div className="absolute top-0 left-0 right-0 p-4 z-50 pointer-events-none flex justify-between items-start font-vt323">
-        {/* Health */}
-        <div className="pixel-panel flex flex-col items-start px-4 py-2 gap-1">
-            <span className="text-white text-xl uppercase tracking-widest leading-none">Health</span>
-            <div className="flex gap-1">
-                {Array.from({ length: 10 }).map((_, i) => (
-                     <PixelHeartIcon key={i} filled={i < health} />
-                ))}
-            </div>
+        {/* Health - Only show in Survival. Simple row, no text, no panel. */}
+        <div className={`flex gap-0.5 transition-opacity duration-500 ${gameMode === 'creative' ? 'opacity-0' : 'opacity-100'}`}>
+            {Array.from({ length: 10 }).map((_, i) => (
+                    <PixelHeartIcon key={i} filled={i < health} />
+            ))}
         </div>
 
         {/* Right Side Buttons */}
@@ -70,6 +71,11 @@ export const HUD: React.FC<HUDProps> = ({ health, onOpenSettings, onChat }) => {
             >
                 <ChatIcon />
             </button>
+            
+            {/* Game Mode Indicator */}
+            <div className="bg-black/50 text-white px-2 py-1 text-sm font-vt323 uppercase rounded border border-white/20">
+                {gameMode}
+            </div>
         </div>
     </div>
   );

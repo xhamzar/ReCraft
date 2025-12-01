@@ -1,18 +1,20 @@
 
-
 import React, { useState, useEffect } from 'react';
+import { GameMode } from '../../types';
 
 interface MainMenuProps {
-  onStartGame: () => void;
+  onStartGame: (mode: GameMode) => void;
   onOpenSettings: () => void;
-  onHostGame: () => void;
+  onOpenAbout: () => void;
+  onHostGame: (mode: GameMode) => void;
   onJoinGame: (id: string) => void;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings, onHostGame, onJoinGame }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings, onOpenAbout, onHostGame, onJoinGame }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showJoinInput, setShowJoinInput] = useState(false);
   const [hostId, setHostId] = useState('');
+  const [selectedMode, setSelectedMode] = useState<GameMode>('survival');
 
   useEffect(() => {
     const handleChange = () => {
@@ -37,18 +39,34 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
   return (
     <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#3b3b3b] font-vt323">
       <div className="text-center">
-        <h1 className="text-8xl font-black text-white mb-4 tracking-widest drop-shadow-[6px_6px_0_rgba(0,0,0,0.5)]">
-          React Craft
+        <h1 className="text-6xl font-black text-white mb-4 tracking-widest drop-shadow-[6px_6px_0_rgba(0,0,0,0.5)]">
+          RECRAFT
         </h1>
-        <p className="text-2xl text-gray-300 mb-12 uppercase tracking-wider">A Voxel Adventure</p>
+        <p className="text-2xl text-gray-300 mb-8 uppercase tracking-wider">A Voxel Adventure</p>
       </div>
 
       <div className="flex flex-col gap-4 w-full max-w-xs">
         
         {!showJoinInput ? (
             <>
+                {/* Game Mode Selector */}
+                <div className="flex bg-black p-1 rounded border-2 border-gray-600 mb-2">
+                    <button 
+                        onClick={() => setSelectedMode('survival')}
+                        className={`flex-1 py-1 text-xl font-bold uppercase transition-colors ${selectedMode === 'survival' ? 'bg-red-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        Survival
+                    </button>
+                    <button 
+                        onClick={() => setSelectedMode('creative')}
+                        className={`flex-1 py-1 text-xl font-bold uppercase transition-colors ${selectedMode === 'creative' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        Creative
+                    </button>
+                </div>
+
                 <button
-                onClick={() => onStartGame()}
+                onClick={() => onStartGame(selectedMode)}
                 className="w-full py-4 pixel-btn text-white font-bold text-3xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-green-700 hover:bg-green-600"
                 >
                 Single Player
@@ -56,7 +74,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
                 
                 <div className="flex gap-2">
                     <button
-                        onClick={() => onHostGame()}
+                        onClick={() => onHostGame(selectedMode)}
                         className="flex-1 py-3 pixel-btn text-white font-bold text-xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-purple-700 hover:bg-purple-600"
                     >
                         Host Game
@@ -69,12 +87,20 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
                     </button>
                 </div>
 
-                <button
-                onClick={onOpenSettings}
-                className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1"
-                >
-                Options
-                </button>
+                <div className="flex gap-2">
+                    <button
+                    onClick={onOpenSettings}
+                    className="flex-1 py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1"
+                    >
+                    Options
+                    </button>
+                    <button
+                    onClick={onOpenAbout}
+                    className="flex-1 py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-gray-600 hover:bg-gray-500"
+                    >
+                    About
+                    </button>
+                </div>
                 
                 <button
                 onClick={toggleFullscreen}
@@ -85,6 +111,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
             </>
         ) : (
             <div className="flex flex-col gap-4">
+                 <div className="text-center text-gray-400 mb-2 uppercase">Connecting to existing world...</div>
                  <input 
                     type="text" 
                     placeholder="Enter Host ID" 
@@ -109,7 +136,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings,
         )}
       </div>
       
-      <p className="absolute bottom-4 text-gray-500 text-lg">Created with React & Three.js</p>
+      <p className="absolute bottom-4 text-gray-500 text-lg">Created by Hamzar</p>
     </div>
   );
 };

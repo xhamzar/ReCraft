@@ -2,16 +2,28 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { INVENTORY, getItemDef } from '../../engine/items/ItemRegistry';
 import { BLOCK } from '../../engine/world/BlockRegistry';
 import { CRAFTING_RECIPES, Recipe } from '../../data/recipes';
-import { ItemStack } from '../../types';
+import { ItemStack, GameMode } from '../../types';
 
 interface InventoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  hotbar: ItemStack[];
+  hotbar: ItemStack[]; // Corresponds to the full inventory array (36 slots)
   onUpdateHotbar: (index: number, item: ItemStack) => void;
   onAddItem: (item: ItemStack) => boolean;
-  craftingMode?: 'player' | 'table';
+  craftingMode?: 'player' | 'table' | 'enchanting';
+  gameMode?: GameMode;
 }
+
+const ENCHANTMENT_NAMES = [
+    "Sharpness",
+    "Knockback",
+    "Unbreaking",
+    "Power",
+    "Efficiency",
+    "Fortune"
+];
+
+const ROMAN_NUMERALS = ["I", "II", "III", "IV", "V"];
 
 export const InventoryModal: React.FC<InventoryModalProps> = ({ 
   isOpen, 
@@ -19,16 +31,27 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   hotbar, 
   onUpdateHotbar,
   onAddItem,
-  craftingMode = 'player'
+  craftingMode = 'player',
+  gameMode = 'survival'
 }) => {
   const isTableMode = craftingMode === 'table';
-  const [activeTab, setActiveTab] = useState<'crafting' | 'blocks' | 'items'>(isTableMode ? 'crafting' : 'blocks');
+  const isEnchantingMode = craftingMode === 'enchanting';
+  const isCreative = gameMode === 'creative';
+  
+  const [activeTab, setActiveTab] = useState<'crafting' | 'blocks' | 'items' | 'enchanting'>(
+      isEnchantingMode ? 'enchanting' : (isTableMode ? 'crafting' : (isCreative ? 'blocks' : 'crafting'))
+  );
   
   // --- Crafting & Item Management State ---
   const gridSize = isTableMode ? 9 : 4;
   const [craftingGrid, setCraftingGrid] = useState<ItemStack[]>(() => Array(gridSize).fill({ id: BLOCK.AIR, count: 0 }));
   const [outputSlot, setOutputSlot] = useState<ItemStack | null>(null);
   const [heldItem, setHeldItem] = useState<ItemStack | null>(null);
+  
+  // Enchanting State
+  const [enchantSlot, setEnchantSlot] = useState<ItemStack>({ id: BLOCK.AIR, count: 0 });
+  const [enchantOptions, setEnchantOptions] = useState<{name: string, level: number, id: string}[]>([]);
+
   const cursorRef = useRef<HTMLDivElement>(null);
 
   const filteredInventory = useMemo(() => {
@@ -49,6 +72,13 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
       if (item.id !== BLOCK.AIR) onAddItem(item);
     });
     setCraftingGrid(Array(gridSize).fill({ id: BLOCK.AIR, count: 0 }));
+    
+    // Return Enchant item
+    if (enchantSlot.id !== BLOCK.AIR) {
+        onAddItem(enchantSlot);
+        setEnchantSlot({ id: BLOCK.AIR, count: 0 });
+    }
+
     onClose();
   };
 
@@ -65,6 +95,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
   // --- Recipe Matching Logic ---
   useEffect(() => {
+    if (activeTab === 'enchanting') return;
+
     const checkRecipe = () => {
         const gridShape: (number | null)[] = craftingGrid.map(item => item.id !== BLOCK.AIR ? item.id : null);
         
@@ -111,60 +143,104 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
         setOutputSlot(null); // No match found
     };
     checkRecipe();
-  }, [craftingGrid, isTableMode]);
+  }, [craftingGrid, isTableMode, activeTab]);
+
+  // --- Generate Enchantments ---
+  useEffect(() => {
+      if (enchantSlot.id === BLOCK.AIR) {
+          setEnchantOptions([]);
+          return;
+      }
+      
+      // Seed pseudo-randomly based on item id and count
+      const seed = enchantSlot.id + Date.now();
+      const options = [];
+      
+      const possibleEnchants = ["sharpness", "unbreaking", "efficiency", "knockback"];
+      
+      for(let i=0; i<3; i++) {
+          const type = possibleEnchants[(seed + i) % possibleEnchants.length];
+          const level = (Math.floor(Math.random() * 3) + 1);
+          const name = ENCHANTMENT_NAMES.find(n => n.toLowerCase() === type) || "Power";
+          options.push({
+              name: `${name} ${ROMAN_NUMERALS[level-1]}`,
+              level: level,
+              id: type
+          });
+      }
+      setEnchantOptions(options);
+  }, [enchantSlot]);
 
 
   if (!isOpen) return null;
   
-  const handleSlotClick = (index: number, location: 'hotbar' | 'grid') => {
-    const isGrid = location === 'grid';
-    const sourceArray = isGrid ? craftingGrid : hotbar;
-    const clickedItem = sourceArray[index];
+  const handleSlotClick = (index: number, location: 'hotbar' | 'grid' | 'enchant') => {
+    // Determine the source array and logic
+    let sourceItem: ItemStack;
+    let updateSource: (newItem: ItemStack) => void;
+
+    if (location === 'grid') {
+        sourceItem = craftingGrid[index];
+        updateSource = (newItem) => { const n = [...craftingGrid]; n[index] = newItem; setCraftingGrid(n); };
+    } else if (location === 'enchant') {
+        sourceItem = enchantSlot;
+        updateSource = (newItem) => setEnchantSlot(newItem);
+    } else {
+        // location 'hotbar' here actually refers to the general inventory array (0-35)
+        sourceItem = hotbar[index];
+        updateSource = (newItem) => onUpdateHotbar(index, newItem);
+    }
 
     if (heldItem) {
-      if (clickedItem.id === BLOCK.AIR) {
-        // Place one item from held stack
-        const newItem = { ...heldItem, count: 1 };
-        const newHeld = { ...heldItem, count: heldItem.count - 1 };
-        if (isGrid) {
-            const newGrid = [...craftingGrid]; newGrid[index] = newItem; setCraftingGrid(newGrid);
+      if (sourceItem.id === BLOCK.AIR) {
+        // Place one item from held stack (or all if enchant slot)
+        if (location === 'enchant') {
+             updateSource(heldItem);
+             setHeldItem(null);
         } else {
-            onUpdateHotbar(index, newItem);
-        }
-        setHeldItem(newHeld.count > 0 ? newHeld : null);
-      } else if (clickedItem.id === heldItem.id) {
-        // Stack one item onto existing stack
-        const maxStack = getItemDef(clickedItem.id)?.maxStack || 64;
-        if (clickedItem.count < maxStack) {
-            const newSlotItem = { ...clickedItem, count: clickedItem.count + 1 };
+            const newItem = { ...heldItem, count: 1 };
             const newHeld = { ...heldItem, count: heldItem.count - 1 };
-             if (isGrid) {
-                const newGrid = [...craftingGrid]; newGrid[index] = newSlotItem; setCraftingGrid(newGrid);
-            } else {
-                onUpdateHotbar(index, newSlotItem);
-            }
+            updateSource(newItem);
+            setHeldItem(newHeld.count > 0 ? newHeld : null);
+        }
+      } else if (sourceItem.id === heldItem.id && location !== 'enchant') {
+        // Stack one item
+        const maxStack = getItemDef(sourceItem.id)?.maxStack || 64;
+        // Check enchantments equality for stacking
+        const sameEnchants = JSON.stringify(sourceItem.enchantments) === JSON.stringify(heldItem.enchantments);
+
+        if (sourceItem.count < maxStack && sameEnchants) {
+            const newSlotItem = { ...sourceItem, count: sourceItem.count + 1 };
+            const newHeld = { ...heldItem, count: heldItem.count - 1 };
+            updateSource(newSlotItem);
             setHeldItem(newHeld.count > 0 ? newHeld : null);
         }
       } else {
-        // Swap held item with slot item
+        // Swap
         const tempHeld = heldItem;
-        setHeldItem(clickedItem);
-         if (isGrid) {
-            const newGrid = [...craftingGrid]; newGrid[index] = tempHeld; setCraftingGrid(newGrid);
-        } else {
-            onUpdateHotbar(index, tempHeld);
-        }
+        setHeldItem(sourceItem);
+        updateSource(tempHeld);
       }
-    } else { // No item held, pick up from slot
-      if (clickedItem.id !== BLOCK.AIR) {
-        setHeldItem(clickedItem);
-        if (isGrid) {
-            const newGrid = [...craftingGrid]; newGrid[index] = {id: BLOCK.AIR, count: 0}; setCraftingGrid(newGrid);
-        } else {
-            onUpdateHotbar(index, {id: BLOCK.AIR, count: 0});
-        }
+    } else { // No item held, pick up
+      if (sourceItem.id !== BLOCK.AIR) {
+        setHeldItem(sourceItem);
+        updateSource({id: BLOCK.AIR, count: 0});
       }
     }
+  };
+
+  const handleApplyEnchant = (option: {name: string, level: number, id: string}) => {
+      if (enchantSlot.id === BLOCK.AIR) return;
+      
+      const newItem = { ...enchantSlot };
+      if (!newItem.enchantments) newItem.enchantments = {};
+      
+      newItem.enchantments[option.id] = option.level;
+      
+      // Move to held item or back to inventory automatically
+      // Simplification: Put it in held item to "pick up" the result
+      setHeldItem(newItem);
+      setEnchantSlot({ id: BLOCK.AIR, count: 0 });
   };
 
   const handleCreativeItemClick = (itemId: number) => {
@@ -173,10 +249,9 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
       const newItem = { id: itemId, count: maxStack };
       
       if (heldItem) {
-          // Swap if holding something
           const oldHeld = heldItem;
           setHeldItem(newItem);
-          onAddItem(oldHeld); // Return the old item to inventory
+          onAddItem(oldHeld);
       } else {
           setHeldItem(newItem);
       }
@@ -185,10 +260,10 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   const handleOutputClick = () => {
       if (!outputSlot) return;
       if (heldItem && (heldItem.id !== outputSlot.id || (heldItem.count + outputSlot.count > (getItemDef(outputSlot.id)?.maxStack || 64)))) {
-          return; // Can't pick up if holding different item or not enough space
+          return; 
       }
 
-      // Consume ingredients from crafting grid
+      // Consume ingredients
       const newGrid = [...craftingGrid];
       for (let i = 0; i < newGrid.length; i++) {
           if (newGrid[i].id !== BLOCK.AIR) {
@@ -200,7 +275,6 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
       }
       setCraftingGrid(newGrid);
 
-      // Add to held item
       setHeldItem(prev => ({
           id: outputSlot.id,
           count: (prev ? prev.count : 0) + outputSlot.count
@@ -208,6 +282,24 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   };
   
   const HeldItemIcon = heldItem ? getItemDef(heldItem.id)?.icon : null;
+
+  // Helper to render a slot in the main inventory grid
+  const renderInventorySlot = (index: number) => {
+      const item = hotbar[index];
+      const itemDef = getItemDef(item.id);
+      const Icon = itemDef?.icon;
+      const isEnchanted = item.enchantments && Object.keys(item.enchantments).length > 0;
+      return (
+        <button 
+            key={index} 
+            onClick={() => handleSlotClick(index, 'hotbar')} 
+            className={`w-10 h-10 sm:w-12 sm:h-12 pixel-btn bg-[#444] relative active:bg-[#555] flex items-center justify-center ${isEnchanted ? 'border-purple-500 animate-pulse' : ''}`}
+        >
+            {item.id !== BLOCK.AIR && Icon && <div className="w-full h-full p-1.5"><Icon /></div>}
+            {item.count > 1 && <span className="absolute bottom-0 right-0 text-white text-[10px] sm:text-xs px-0.5 bg-black/60">{item.count}</span>}
+        </button>
+      );
+  };
 
   return (
     <div 
@@ -238,57 +330,126 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
             </div>
         )}
 
-        <div className="pixel-panel flex flex-col w-full max-w-3xl h-[85vh] sm:h-[80vh] max-h-[90dvh] mx-2 sm:mx-auto overflow-hidden shadow-2xl transition-all">
+        <div className="pixel-panel flex flex-col w-full max-w-3xl h-[85vh] sm:h-[85vh] max-h-[95dvh] mx-2 sm:mx-auto overflow-hidden shadow-2xl transition-all">
             {/* Header */}
             <div className="flex justify-between items-center bg-[#222] p-2 sm:p-4 border-b-4 border-black shrink-0">
-                <h2 className="text-2xl sm:text-3xl text-white tracking-widest uppercase font-vt323 truncate">{isTableMode ? 'Crafting Table' : 'Inventory'}</h2>
+                <h2 className="text-2xl sm:text-3xl text-white tracking-widest uppercase font-vt323 truncate">
+                    {isEnchantingMode ? 'Enchanting' : (isTableMode ? 'Crafting Table' : (isCreative ? 'Creative Menu' : 'Inventory'))}
+                </h2>
                 <button onClick={handleClose} className="w-8 h-8 sm:w-10 sm:h-10 pixel-btn bg-red-600 hover:bg-red-500 flex items-center justify-center text-white text-xl"> X </button>
             </div>
 
-            {/* Tabs */}
+            {/* Tabs - Only show Blocks/Items in Creative Mode or if not table/enchant */}
             <div className="flex px-2 sm:px-4 pt-2 sm:pt-4 gap-1 sm:gap-2 bg-[#333] shrink-0 overflow-x-auto no-scrollbar">
-                {!isTableMode && <>
+                {!isTableMode && !isEnchantingMode && isCreative && <>
                   <button onClick={() => setActiveTab('blocks')} className={`flex-1 py-2 px-1 text-lg sm:text-xl font-vt323 uppercase transition-all whitespace-nowrap ${activeTab === 'blocks' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Blocks </button>
                   <button onClick={() => setActiveTab('items')} className={`flex-1 py-2 px-1 text-lg sm:text-xl font-vt323 uppercase transition-all whitespace-nowrap ${activeTab === 'items' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Items </button>
                 </>}
+                
+                {/* Always show Crafting tab */}
                 <button onClick={() => setActiveTab('crafting')} className={`flex-1 py-2 px-1 text-lg sm:text-xl font-vt323 uppercase transition-all whitespace-nowrap ${activeTab === 'crafting' ? 'bg-[#555] text-white border-t-4 border-x-4 border-black translate-y-1' : 'bg-[#222] text-gray-500 hover:bg-[#444] border-4 border-transparent'}`}> Crafting </button>
+                
+                {isEnchantingMode && <button className="flex-1 py-2 px-1 text-lg sm:text-xl font-vt323 uppercase bg-purple-900 text-white border-t-4 border-x-4 border-black translate-y-1"> Enchanting </button>}
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 bg-[#555] p-2 sm:p-4 overflow-y-auto custom-scrollbar border-4 border-black m-2 sm:m-4 mt-0">
-                {activeTab === 'crafting' ? (
-                     <div className="flex flex-col items-center justify-center min-h-full gap-4 py-4">
-                         <div className={`grid gap-1 ${gridSize === 9 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                             {craftingGrid.map((item, i) => {
-                                 const itemDef = getItemDef(item.id);
-                                 const Icon = itemDef?.icon;
-                                 return (
-                                     <button key={i} onClick={() => handleSlotClick(i, 'grid')} className="w-14 h-14 sm:w-16 sm:h-16 pixel-btn bg-[#444] relative active:bg-[#555]">
-                                         {item.id !== BLOCK.AIR && Icon && <div className="w-full h-full p-2"><Icon /></div>}
-                                         {item.count > 1 && <span className="absolute bottom-0 right-0 text-white text-xs px-1 bg-black/60">{item.count}</span>}
-                                     </button>
-                                 );
-                             })}
-                         </div>
-                         
-                         <div className="flex flex-col items-center justify-center">
-                            <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[15px] border-t-white mb-2"></div>
+            <div className={`flex-1 p-2 sm:p-4 overflow-y-auto custom-scrollbar border-4 border-black m-2 sm:m-4 mt-0 ${isEnchantingMode ? 'bg-[#2a1a35]' : 'bg-[#555]'}`}>
+                {activeTab === 'enchanting' ? (
+                     <div className="flex flex-col sm:flex-row items-center justify-center min-h-full gap-8 py-4">
+                         {/* Item Slot */}
+                         <div className="flex flex-col items-center">
+                             <div className="text-gray-400 mb-2 font-vt323 uppercase">Insert Item</div>
+                             <button onClick={() => handleSlotClick(0, 'enchant')} className="w-20 h-20 pixel-btn bg-[#222] relative active:bg-[#333] border-4 border-purple-500">
+                                 {enchantSlot.id !== BLOCK.AIR && (() => {
+                                     const def = getItemDef(enchantSlot.id);
+                                     const Icon = def?.icon;
+                                     return (Icon && <div className="w-full h-full p-2"><Icon /></div>);
+                                 })()}
+                             </button>
                          </div>
 
-                         <button onClick={handleOutputClick} className="w-20 h-20 sm:w-24 sm:h-24 pixel-btn bg-[#222] relative active:bg-[#333]">
-                              {outputSlot && (() => {
-                                  const itemDef = getItemDef(outputSlot.id);
-                                  const Icon = itemDef?.icon;
-                                  return (
-                                     <>
-                                         {Icon && <div className="w-full h-full p-2"><Icon /></div>}
-                                         {outputSlot.count > 1 && <span className="absolute bottom-1 right-1 text-white text-lg px-1 bg-black/60">{outputSlot.count}</span>}
-                                     </>
-                                  );
-                              })()}
-                         </button>
+                         {/* Arrow */}
+                         <div className="text-purple-400 text-4xl font-bold font-vt323">{`>>`}</div>
+
+                         {/* Options */}
+                         <div className="flex flex-col gap-2 w-full max-w-xs">
+                             {enchantOptions.map((opt, i) => (
+                                 <button 
+                                    key={i} 
+                                    onClick={() => handleApplyEnchant(opt)}
+                                    className="pixel-btn bg-[#333] hover:bg-[#444] p-3 text-left border-2 border-purple-800 flex justify-between items-center group active:translate-y-1"
+                                >
+                                     <span className="text-purple-300 font-vt323 text-xl group-hover:text-white">{opt.name}</span>
+                                     <span className="text-green-500 font-vt323 text-lg bg-black px-2 rounded">{(i+1) * 2} XP</span>
+                                 </button>
+                             ))}
+                             {enchantOptions.length === 0 && (
+                                 <div className="text-gray-500 font-vt323 text-xl text-center italic">Place item to see spells...</div>
+                             )}
+                         </div>
+                     </div>
+                ) : activeTab === 'crafting' ? (
+                     <div className="flex flex-col items-center min-h-full py-2 gap-4">
+                         {/* Crafting Grid & Output */}
+                         <div className="flex flex-row items-center gap-4 justify-center w-full">
+                            <div className="flex flex-col items-center gap-2">
+                                <span className="text-white font-vt323 uppercase text-sm">{isTableMode ? 'Crafting' : 'Crafting'}</span>
+                                <div className={`grid gap-1 ${gridSize === 9 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                    {craftingGrid.map((item, i) => {
+                                        const itemDef = getItemDef(item.id);
+                                        const Icon = itemDef?.icon;
+                                        return (
+                                            <button key={i} onClick={() => handleSlotClick(i, 'grid')} className="w-12 h-12 sm:w-16 sm:h-16 pixel-btn bg-[#444] relative active:bg-[#555]">
+                                                {item.id !== BLOCK.AIR && Icon && <div className="w-full h-full p-2"><Icon /></div>}
+                                                {item.count > 1 && <span className="absolute bottom-0 right-0 text-white text-xs px-1 bg-black/60">{item.count}</span>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                         
+                             <div className="flex flex-col items-center justify-center pt-6">
+                                <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[15px] border-t-white mb-2 rotate-[-90deg]"></div>
+                             </div>
+
+                             <div className="flex flex-col items-center gap-2">
+                                <span className="text-white font-vt323 uppercase text-sm">Result</span>
+                                <button onClick={handleOutputClick} className="w-16 h-16 sm:w-20 sm:h-20 pixel-btn bg-[#222] relative active:bg-[#333]">
+                                    {outputSlot && (() => {
+                                        const itemDef = getItemDef(outputSlot.id);
+                                        const Icon = itemDef?.icon;
+                                        return (
+                                            <>
+                                                {Icon && <div className="w-full h-full p-2"><Icon /></div>}
+                                                {outputSlot.count > 1 && <span className="absolute bottom-1 right-1 text-white text-lg px-1 bg-black/60">{outputSlot.count}</span>}
+                                            </>
+                                        );
+                                    })()}
+                                </button>
+                             </div>
+                         </div>
+                         
+                         {/* Divider */}
+                         <div className="w-full h-1 bg-[#222] my-1 rounded"></div>
+
+                         {/* Main Inventory Grid (Indices 9-35) */}
+                         <div className="w-full max-w-[90%]">
+                             <div className="text-gray-300 font-vt323 text-sm mb-1 uppercase tracking-wide">Storage</div>
+                             <div className="grid grid-cols-9 gap-1">
+                                {hotbar.slice(9, 36).map((_, i) => renderInventorySlot(i + 9))}
+                             </div>
+                         </div>
+
+                         {/* Hotbar Grid (Indices 0-8) */}
+                         <div className="w-full max-w-[90%]">
+                             <div className="text-gray-300 font-vt323 text-sm mb-1 uppercase tracking-wide">Hotbar</div>
+                             <div className="grid grid-cols-9 gap-1">
+                                {hotbar.slice(0, 9).map((_, i) => renderInventorySlot(i))}
+                             </div>
+                         </div>
                      </div>
                 ) : (
+                    /* CREATIVE MENU (BLOCKS / ITEMS) */
                     <div className="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-9 gap-1 sm:gap-2">
                         {filteredInventory.map(item => {
                             const IconComponent = item.icon;
@@ -308,28 +469,29 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                     </div>
                 )}
             </div>
-
-            {/* Hotbar Section */}
-            <div className="p-2 sm:p-4 bg-[#333] border-t-4 border-black shrink-0">
-                <div className="text-center text-gray-400 mb-1 text-sm font-vt323">Tap hotbar slot to place/swap</div>
-                <div className="flex justify-center gap-1 sm:gap-2 overflow-x-auto pb-2 no-scrollbar">
-                    {hotbar.map((item, index) => {
-                        const blockData = getItemDef(item.id);
-                        const IconComponent = blockData?.icon;
-                        return (
-                            <button
-                                key={index}
-                                onClick={() => handleSlotClick(index, 'hotbar')}
-                                className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 pixel-btn relative flex items-center justify-center bg-[#444] active:bg-[#555]"
-                            >
-                                {item.count > 0 && IconComponent && <div className="p-1.5 sm:p-2 w-full h-full"><IconComponent /></div>}
-                                {item.count > 1 && <span className="absolute bottom-0 right-0 text-white text-[10px] font-bold px-1 bg-black/50">{item.count}</span>}
-                                <span className="absolute top-0.5 left-1 text-[8px] sm:text-[10px] text-white/50 font-mono">{index + 1}</span>
-                            </button>
-                        );
-                    })}
+            
+            {/* Only show bottom hotbar hint in Creative Mode because Survival Mode already shows hotbar in the grid */}
+            {isCreative && activeTab !== 'crafting' && (
+                <div className="p-2 sm:p-4 bg-[#333] border-t-4 border-black shrink-0">
+                    <div className="text-center text-gray-400 mb-1 text-sm font-vt323">Hotbar Preview</div>
+                    <div className="flex justify-center gap-1 sm:gap-2 overflow-x-auto pb-2 no-scrollbar">
+                        {hotbar.slice(0, 9).map((item, index) => {
+                            const blockData = getItemDef(item.id);
+                            const IconComponent = blockData?.icon;
+                            return (
+                                <button
+                                    key={index}
+                                    onClick={() => handleSlotClick(index, 'hotbar')}
+                                    className={`w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 pixel-btn relative flex items-center justify-center bg-[#444] active:bg-[#555]`}
+                                >
+                                    {item.count > 0 && IconComponent && <div className="p-1.5 sm:p-2 w-full h-full"><IconComponent /></div>}
+                                    {item.count > 1 && <span className="absolute bottom-0 right-0 text-white text-[10px] font-bold px-1 bg-black/50">{item.count}</span>}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     </div>
   );

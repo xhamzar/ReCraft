@@ -1,7 +1,9 @@
+
+
 import React, { useRef, useImperativeHandle, forwardRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { ControlState } from '../../types';
+import { ControlState, GameMode } from '../../types';
 import { BLOCK } from '../world/BlockRegistry';
 import { INVENTORY, getItemDef } from '../items/ItemRegistry';
 import { SimplexNoise } from '../math/Noise';
@@ -21,6 +23,7 @@ interface PlayerProps {
   rotationRef: React.MutableRefObject<THREE.Quaternion>;
   modifiedBlocks: React.MutableRefObject<Map<string, number>>;
   selectedBlock: number;
+  gameMode: GameMode;
 }
 
 export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(({ 
@@ -29,7 +32,8 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
   positionRef, 
   rotationRef, 
   modifiedBlocks,
-  selectedBlock
+  selectedBlock,
+  gameMode
 }, ref) => {
   const { camera } = useThree();
   const velocity = useRef(new THREE.Vector3());
@@ -77,6 +81,9 @@ export const PlayerController = forwardRef<PlayerControllerHandle, PlayerProps>(
       }
     },
     takeDamage: (attackerPosition: THREE.Vector3) => {
+        // Invincible in Creative Mode
+        if (gameMode === 'creative') return;
+
         const knockbackDir = positionRef.current.clone().sub(attackerPosition).normalize();
         knockbackDir.y = 0.4; // Push up a bit
         knockbackDir.normalize();

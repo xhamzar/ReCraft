@@ -25,6 +25,7 @@ interface InteractionControllerProps {
   onDropItem: (blockId: number, x: number, y: number, z: number) => void;
   onPlace: () => void;
   onOpenCraftingTable: () => void;
+  onOpenEnchantingTable: () => void;
   onBlockUpdate?: (key: string, val: number) => void; // Added for networking
 }
 
@@ -35,7 +36,7 @@ const isWater = (type: number) => {
 const ALL_NEIGHBORS = [ {x:1,y:0,z:0}, {x:-1,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:-1,z:0}, {x:0,y:0,z:1}, {x:0,y:0,z:-1} ];
 
 export const InteractionController = forwardRef<InteractionControllerHandle, InteractionControllerProps>(
-  ({ modifiedBlocks, terrainSeed, playerPositionRef, playerRotationRef, updateChunkVersions, selectedItem, onSleep, onDropItem, onPlace, onOpenCraftingTable, onBlockUpdate }, ref) => {
+  ({ modifiedBlocks, terrainSeed, playerPositionRef, playerRotationRef, updateChunkVersions, selectedItem, onSleep, onDropItem, onPlace, onOpenCraftingTable, onOpenEnchantingTable, onBlockUpdate }, ref) => {
     const { camera, raycaster, scene } = useThree();
     const noise = useMemo(() => new SimplexNoise(terrainSeed), [terrainSeed]);
 
@@ -91,6 +92,12 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
         // Crafting Table Interaction
         if (type === BLOCK.CRAFTING_TABLE) {
             onOpenCraftingTable();
+            return;
+        }
+
+        // Enchanting Table Interaction
+        if (type === BLOCK.ENCHANTING_TABLE) {
+            onOpenEnchantingTable();
             return;
         }
 

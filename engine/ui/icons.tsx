@@ -88,3 +88,10 @@ export const RawBeefIcon = () => (
         <rect x="10" y="9" width="2" height="3" fill="#f2e8c9" />
     </svg>
 );
+
+export const EnchantedBookIcon = () => (
+    <svg viewBox="0 0 24 24" className="w-full h-full fill-current text-white drop-shadow-md filter drop-shadow-[0_0_2px_#d946ef]">
+        <path fill="#7e22ce" d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/>
+        <path fill="#d946ef" d="M19 18H6c-.55 0-1-.45-1-1s.45-1 1-1h13c.55 0 1 .45 1 1s-.45 1-1 1zm0-4H6c-.55 0-1-.45-1-1s.45-1 1-1h13c.55 0 1 .45 1 1s-.45 1-1 1z"/>
+    </svg>
+);

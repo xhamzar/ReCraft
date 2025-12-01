@@ -1,5 +1,4 @@
 
-
 import React, { useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
@@ -30,10 +29,11 @@ import { GameControls } from './components/ui/GameControls';
 import { GameOver } from './components/ui/GameOver';
 import { SettingsMenu, GameSettings } from './components/ui/SettingsMenu';
 import { MainMenu } from './components/ui/MainMenu';
+import { AboutMenu } from './components/ui/AboutMenu';
 import { LoadingScreen } from './components/ui/LoadingScreen';
 import { ChatBox } from './components/ui/ChatBox';
 
-import { ControlState, ItemStack, InitPayload, PlayerUpdatePayload, BlockUpdatePayload, ChatPayload } from './types';
+import { ControlState, ItemStack, InitPayload, PlayerUpdatePayload, BlockUpdatePayload, ChatPayload, GameMode } from './types';
 import { BLOCK } from './engine/world/BlockRegistry';
 import { Config } from './engine/core/Config';
 import { INVENTORY, getItemDef } from './engine/items/ItemRegistry';
@@ -114,6 +114,8 @@ const GameTimeManager = forwardRef<GameTimeManagerHandle, {
 
 export default function App() {
   const [gameState, setGameState] = useState<'loading' | 'menu' | 'playing'>('loading');
+  const [gameMode, setGameMode] = useState<GameMode>('survival'); // Default
+  
   const controlsRef = useRef<ControlState>({
     move: { x: 0, y: 0 },
     look: { x: 0, y: 0 },
@@ -155,11 +157,14 @@ export default function App() {
   const itemDropManagerRef = useRef<ItemDropManagerHandle>(null);
   const timeOffsetRef = useRef(0);
   
-  const [hotbar, setHotbar] = useState<ItemStack[]>(new Array(7).fill({ id: BLOCK.AIR, count: 0 }));
+  // Inventory State: 9 Hotbar + 27 Storage = 36 Total Slots
+  const [inventory, setInventory] = useState<ItemStack[]>(new Array(36).fill({ id: BLOCK.AIR, count: 0 }));
   const [activeSlot, setActiveSlot] = useState(0);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [isCraftingTableOpen, setIsCraftingTableOpen] = useState(false);
+  const [isEnchantingTableOpen, setIsEnchantingTableOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false); // New About Menu State
   const [fishCaught, setFishCaught] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
   const [isCrouching, setIsCrouching] = useState(false);
@@ -175,7 +180,7 @@ export default function App() {
       showFps: false,
   });
   
-  const isModalOpen = isInventoryOpen || isSettingsOpen || isCraftingTableOpen || isChatOpen;
+  const isModalOpen = isInventoryOpen || isSettingsOpen || isCraftingTableOpen || isEnchantingTableOpen || isChatOpen || isAboutOpen;
 
   // --- MULTIPLAYER LOGIC ---
   
@@ -206,7 +211,7 @@ export default function App() {
       });
   }, [connectedPeers]);
 
-  const initPeer = useCallback((id?: string) => {
+  const initPeer = useCallback((id?: string, mode: GameMode = 'survival') => {
     try {
         const peer = id ? new Peer(id) : new Peer();
         peerInstance.current = peer;
@@ -245,7 +250,8 @@ export default function App() {
                     const initData: InitPayload = {
                         seed,
                         modifiedBlocks: Array.from(modifiedBlocksRef.current.entries()),
-                        spawnPos: playerPositionRef.current
+                        spawnPos: playerPositionRef.current,
+                        gameMode: gameMode
                     };
                     conn.send({ type: 'INIT', payload: initData });
                     setToastMessage(`Player joined!`);
@@ -273,7 +279,7 @@ export default function App() {
     } catch (e) {
         handleConnectionError("Failed to initialize network.");
     }
-  }, [isHost, seed, handleConnectionError]);
+  }, [isHost, seed, handleConnectionError, gameMode]);
 
   const handleNetworkData = useCallback((data: any, peerId: string) => {
       if (data.type === 'INIT') {
@@ -281,6 +287,10 @@ export default function App() {
           const payload = data.payload as InitPayload;
           setSeed(payload.seed);
           modifiedBlocksRef.current = new Map(payload.modifiedBlocks);
+          
+          if (payload.gameMode) {
+              setGameMode(payload.gameMode);
+          }
           
           // Teleport to spawn/host position immediately
           if (payload.spawnPos) {
@@ -291,7 +301,7 @@ export default function App() {
           setChunkVersions(new Map()); 
           setIsConnecting(false); // Client is ready!
           setGameState('playing');
-          setToastMessage("Connected to Host!");
+          setToastMessage(`Connected to Host! Mode: ${payload.gameMode || 'Survival'}`);
           setTimeout(() => setToastMessage(""), 2000);
       } 
       else if (data.type === 'PLAYER_UPDATE') {
@@ -326,12 +336,13 @@ export default function App() {
       }
   }, [isHost, connectedPeers]);
 
-  const handleHostGame = () => {
+  const handleHostGame = (mode: GameMode) => {
       setIsMultiplayer(true);
       setIsHost(true);
+      setGameMode(mode);
       setIsConnecting(true);
-      setLoadingText("Creating Server...");
-      initPeer(); // Auto-generate ID
+      setLoadingText(`Creating ${mode} Server...`);
+      initPeer(undefined, mode); // Auto-generate ID
   };
 
   const handleJoinGame = (hostId: string) => {
@@ -392,8 +403,9 @@ export default function App() {
       }
   };
   
-  const handleStartGame = () => {
+  const handleStartGame = (mode: GameMode) => {
       setIsMultiplayer(false);
+      setGameMode(mode);
       setGameState('playing');
   };
 
@@ -506,7 +518,8 @@ export default function App() {
       setIsCrouching(newState);
   }, []);
 
-  const selectedItem = hotbar[activeSlot];
+  // Safe access to selected item (hotbar is 0-35, activeSlot is 0-8)
+  const selectedItem = inventory[activeSlot] || { id: BLOCK.AIR, count: 0 };
 
   const handleAction = useCallback((action: 'attack') => {
     if (action === 'attack') {
@@ -528,20 +541,22 @@ export default function App() {
   const handleCatch = useCallback(() => {
       setFishCaught(true);
       setTimeout(() => setFishCaught(false), 2000);
-      // We need to call a function that updates hotbar, handled below
+      // We need to call a function that updates inventory, handled below
   }, []);
 
   // Use a ref for handleAddItem to use it inside handleCatch without circular dependency or excessive deps
   const handleAddItemRef = useRef<(item: ItemStack) => boolean>(() => false);
 
   const handleDamage = useCallback((amount: number, attackerPosition?: THREE.Vector3) => {
+      if (gameMode === 'creative') return; // No damage in creative
+
       setPlayerHealth(h => Math.max(0, h - amount));
       setDamageFlash(true);
       if (attackerPosition && playerControllerRef.current) {
           playerControllerRef.current.takeDamage(attackerPosition);
       }
       setTimeout(() => setDamageFlash(false), 200);
-  }, []);
+  }, [gameMode]);
 
   const handleRespawn = useCallback((e?: React.SyntheticEvent) => {
       if (e) {
@@ -558,48 +573,60 @@ export default function App() {
       setRespawnKey(k => k + 1);
   }, []);
 
-  const handleUpdateHotbar = (index: number, item: ItemStack) => {
-      const newHotbar = [...hotbar];
-      newHotbar[index] = item;
-      setHotbar(newHotbar);
+  const handleUpdateInventory = (index: number, item: ItemStack) => {
+      const newInv = [...inventory];
+      newInv[index] = item;
+      setInventory(newInv);
   };
 
   const handleOpenCraftingTable = useCallback(() => {
       setIsCraftingTableOpen(true);
   }, []);
+  
+  const handleOpenEnchantingTable = useCallback(() => {
+      setIsEnchantingTableOpen(true);
+  }, []);
 
   // Generic function to add any item/stack to inventory
   const handleAddItem = (itemToAdd: ItemStack): boolean => {
     let remainingToAdd = itemToAdd.count;
-    const newHotbar = [...hotbar];
+    const newInv = [...inventory];
 
     const def = getItemDef(itemToAdd.id);
     const maxStack = def?.maxStack || 64;
 
-    // 1. Try to stack
-    for (let i = 0; i < newHotbar.length; i++) {
-        if (newHotbar[i].id === itemToAdd.id && newHotbar[i].count < maxStack) {
-            const canAdd = maxStack - newHotbar[i].count;
+    // 1. Try to stack in existing slots (0 to 35)
+    for (let i = 0; i < newInv.length; i++) {
+        // Check if enchantments match before stacking
+        const sameEnchants = JSON.stringify(newInv[i].enchantments) === JSON.stringify(itemToAdd.enchantments);
+        
+        if (newInv[i].id === itemToAdd.id && newInv[i].count < maxStack && sameEnchants) {
+            const canAdd = maxStack - newInv[i].count;
             const add = Math.min(canAdd, remainingToAdd);
-            newHotbar[i].count += add;
+            newInv[i].count += add;
             remainingToAdd -= add;
             if (remainingToAdd <= 0) break;
         }
     }
     
-    // 2. Try empty slots
+    // 2. Try empty slots (0 to 35) - This naturally fills hotbar (0-8) first if empty
     if (remainingToAdd > 0) {
-        for (let i = 0; i < newHotbar.length; i++) {
-            if (newHotbar[i].id === BLOCK.AIR) {
+        for (let i = 0; i < newInv.length; i++) {
+            if (newInv[i].id === BLOCK.AIR) {
+                // If adding to empty slot, we must preserve the enchantments!
                 const add = Math.min(maxStack, remainingToAdd);
-                newHotbar[i] = { id: itemToAdd.id, count: add };
+                newInv[i] = { 
+                    id: itemToAdd.id, 
+                    count: add, 
+                    enchantments: itemToAdd.enchantments // preserve this
+                };
                 remainingToAdd -= add;
                 if (remainingToAdd <= 0) break;
             }
         }
     }
 
-    setHotbar(newHotbar);
+    setInventory(newInv);
 
     if (remainingToAdd > 0) {
         setToastMessage("Inventory Full");
@@ -618,18 +645,18 @@ export default function App() {
   }, [handleCatch]);
 
   const handleDropItem = () => {
-      const itemToDrop = hotbar[activeSlot];
+      const itemToDrop = inventory[activeSlot];
       if (itemToDrop.id === BLOCK.AIR || itemToDrop.count <= 0) return;
 
       const itemName = INVENTORY.find(i => i.id === itemToDrop.id)?.name || "Item";
 
       // Decrement stack
-      const newHotbar = [...hotbar];
-      newHotbar[activeSlot] = { ...itemToDrop, count: itemToDrop.count - 1 };
-      if (newHotbar[activeSlot].count <= 0) {
-          newHotbar[activeSlot] = { id: BLOCK.AIR, count: 0 };
+      const newInv = [...inventory];
+      newInv[activeSlot] = { ...itemToDrop, count: itemToDrop.count - 1 };
+      if (newInv[activeSlot].count <= 0) {
+          newInv[activeSlot] = { id: BLOCK.AIR, count: 0 };
       }
-      setHotbar(newHotbar);
+      setInventory(newInv);
 
       // Spawn item slightly in front of player
       const forward = new THREE.Vector3(0, 0, 0.5).applyQuaternion(playerRotationRef.current);
@@ -643,8 +670,12 @@ export default function App() {
   };
 
   const handleConsumeItem = useCallback(() => {
-      setHotbar(prev => {
+      // In Creative, we don't consume items
+      if (gameMode === 'creative') return;
+
+      setInventory(prev => {
           const next = [...prev];
+          // activeSlot is 0-8, perfectly safe
           if (next[activeSlot].id !== BLOCK.AIR) {
               next[activeSlot] = { ...next[activeSlot], count: next[activeSlot].count - 1 };
               if (next[activeSlot].count <= 0) {
@@ -653,13 +684,16 @@ export default function App() {
           }
           return next;
       });
-  }, [activeSlot]);
+  }, [activeSlot, gameMode]);
   
   const handleBlockBreakDrop = useCallback((blockId: number, x: number, y: number, z: number) => {
       // NETWORK BROADCAST: Block Broken (Air)
       if (isMultiplayer) {
            broadcastData({ type: 'BLOCK_UPDATE', payload: { key: `${x},${y},${z}`, val: BLOCK.AIR } });
       }
+      
+      // In Creative, blocks don't drop items when broken
+      if (gameMode === 'creative') return;
 
       let dropId = blockId;
       let extraItem = -1;
@@ -700,7 +734,7 @@ export default function App() {
 
       spawnItem(dropId);
       if (extraItem !== -1) spawnItem(extraItem);
-  }, [isMultiplayer, broadcastData]);
+  }, [isMultiplayer, broadcastData, gameMode]);
 
   // Wrapped Place handler to broadcast changes
   const handlePlaceBlock = useCallback(() => {
@@ -847,6 +881,7 @@ export default function App() {
         <MainMenu 
             onStartGame={handleStartGame} 
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenAbout={() => setIsAboutOpen(true)}
             onHostGame={handleHostGame}
             onJoinGame={handleJoinGame}
         />
@@ -933,7 +968,7 @@ export default function App() {
             
             <FluidSimulator playerPositionRef={playerPositionRef} modifiedBlocks={modifiedBlocksRef} terrainSeed={seed} updateChunkVersions={updateChunkVersions} />
             <MobManager ref={mobManagerRef} playerPositionRef={playerPositionRef} modifiedBlocks={modifiedBlocksRef} terrainSeed={seed} onDamagePlayer={handleDamage} timeOffsetRef={timeOffsetRef} />
-            <PlayerController ref={playerControllerRef} key={respawnKey} controls={controlsRef} terrainSeed={seed} positionRef={playerPositionRef} rotationRef={playerRotationRef} modifiedBlocks={modifiedBlocksRef} selectedBlock={selectedItem.id} />
+            <PlayerController ref={playerControllerRef} key={respawnKey} controls={controlsRef} terrainSeed={seed} positionRef={playerPositionRef} rotationRef={playerRotationRef} modifiedBlocks={modifiedBlocksRef} selectedBlock={selectedItem.id} gameMode={gameMode} />
             <PlayerInteraction playerPositionRef={playerPositionRef} playerRotationRef={playerRotationRef} terrainSeed={seed} modifiedBlocks={modifiedBlocksRef} />
             <InteractionController 
                 ref={interactionControllerRef} 
@@ -947,6 +982,7 @@ export default function App() {
                 onDropItem={handleBlockBreakDrop}
                 onPlace={handlePlaceBlock}
                 onOpenCraftingTable={handleOpenCraftingTable}
+                onOpenEnchantingTable={handleOpenEnchantingTable}
                 onBlockUpdate={handleBlockUpdateSync}
             />
             
@@ -959,6 +995,7 @@ export default function App() {
                 health={playerHealth} 
                 onOpenSettings={() => setIsSettingsOpen(true)} 
                 onChat={() => setIsChatOpen(true)}
+                gameMode={gameMode}
             />
             {!isModalOpen && ( <div className="flex-1 relative"> 
                 <GameControls 
@@ -970,11 +1007,19 @@ export default function App() {
                     visualStyle={settings.visualStyle} 
                 /> 
             </div> )}
-            <InventoryBar hotbar={hotbar} activeSlot={activeSlot} onSelectSlot={setActiveSlot} onOpenInventory={() => setIsInventoryOpen(true)} onDrop={handleDropItem} />
+            {/* INVENTORY BAR: Only Pass first 9 items (Hotbar) */}
+            <InventoryBar 
+                hotbar={inventory.slice(0, 9)} 
+                activeSlot={activeSlot} 
+                onSelectSlot={setActiveSlot} 
+                onOpenInventory={() => setIsInventoryOpen(true)} 
+                onDrop={handleDropItem} 
+            />
           </div>
           
-          {isInventoryOpen && ( <div id="inventory-modal"> <InventoryModal isOpen={isInventoryOpen} onClose={() => setIsInventoryOpen(false)} hotbar={hotbar} onUpdateHotbar={handleUpdateHotbar} onAddItem={handleAddItem} craftingMode="player" /> </div> )}
-          {isCraftingTableOpen && ( <div id="crafting-modal"> <InventoryModal isOpen={isCraftingTableOpen} onClose={() => setIsCraftingTableOpen(false)} hotbar={hotbar} onUpdateHotbar={handleUpdateHotbar} onAddItem={handleAddItem} craftingMode="table" /> </div> )}
+          {isInventoryOpen && ( <div id="inventory-modal"> <InventoryModal isOpen={isInventoryOpen} onClose={() => setIsInventoryOpen(false)} hotbar={inventory} onUpdateHotbar={handleUpdateInventory} onAddItem={handleAddItem} craftingMode="player" gameMode={gameMode} /> </div> )}
+          {isCraftingTableOpen && ( <div id="crafting-modal"> <InventoryModal isOpen={isCraftingTableOpen} onClose={() => setIsCraftingTableOpen(false)} hotbar={inventory} onUpdateHotbar={handleUpdateInventory} onAddItem={handleAddItem} craftingMode="table" gameMode={gameMode} /> </div> )}
+          {isEnchantingTableOpen && ( <div id="enchanting-modal"> <InventoryModal isOpen={isEnchantingTableOpen} onClose={() => setIsEnchantingTableOpen(false)} hotbar={inventory} onUpdateHotbar={handleUpdateInventory} onAddItem={handleAddItem} craftingMode="enchanting" gameMode={gameMode} /> </div> )}
           
           {!isModalOpen && (
             <>
@@ -996,6 +1041,12 @@ export default function App() {
             hostId={isMultiplayer && isHost ? myPeerId : undefined}
           />
       )}
+
+      {/* ABOUT MENU */}
+      {isAboutOpen && (
+          <AboutMenu onClose={() => setIsAboutOpen(false)} />
+      )}
+
     </div>
   );
 }

@@ -22,6 +22,8 @@ export interface ItemStack {
   enchantments?: { [key: string]: number };
 }
 
+export type GameMode = 'survival' | 'creative';
+
 // --- NETWORK TYPES ---
 
 export type PacketType = 'INIT' | 'PLAYER_UPDATE' | 'BLOCK_UPDATE' | 'CHAT';
@@ -35,6 +37,7 @@ export interface InitPayload {
   seed: number;
   modifiedBlocks: [string, number][]; // Send map as array of entries
   spawnPos: {x: number, y: number, z: number};
+  gameMode: GameMode;
 }
 
 export interface PlayerUpdatePayload {
