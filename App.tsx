@@ -3,6 +3,8 @@ import React, { useRef, useState, useEffect, useMemo, useImperativeHandle, forwa
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
 import * as THREE from 'three';
+import Peer from 'peerjs';
+import type { DataConnection } from 'peerjs';
 
 // Engine Imports
 import { Terrain } from './components/Terrain';
@@ -35,9 +37,6 @@ import { BLOCK } from './engine/world/BlockRegistry';
 import { Config } from './engine/core/Config';
 import { INVENTORY, getItemDef } from './engine/items/ItemRegistry';
 import { Recipe } from './data/recipes';
-
-// --- PEERJS GLOBAL DEF ---
-declare var Peer: any;
 
 const FluidSimulator = React.memo(({ 
     playerPositionRef, 
@@ -123,9 +122,9 @@ export default function App() {
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [isHost, setIsHost] = useState(false);
   const [myPeerId, setMyPeerId] = useState<string>("");
-  const [connectedPeers, setConnectedPeers] = useState<Map<string, any>>(new Map()); // Map of DataConnections
+  const [connectedPeers, setConnectedPeers] = useState<Map<string, DataConnection>>(new Map()); // Map of DataConnections
   const [remotePlayers, setRemotePlayers] = useState<Map<string, PlayerUpdatePayload>>(new Map());
-  const peerInstance = useRef<any>(null);
+  const peerInstance = useRef<Peer | null>(null);
   
   const [chatMessages, setChatMessages] = useState<ChatPayload[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -174,8 +173,7 @@ export default function App() {
   }, [connectedPeers]);
 
   const initPeer = useCallback((id?: string) => {
-    // @ts-ignore
-    const peer = new Peer(id); // Create a new peer, optionally with an ID
+    const peer = id ? new Peer(id) : new Peer();
     peerInstance.current = peer;
 
     peer.on('open', (id: string) => {
@@ -187,7 +185,7 @@ export default function App() {
         }
     });
 
-    peer.on('connection', (conn: any) => {
+    peer.on('connection', (conn: DataConnection) => {
         // Only Host receives connections usually, but in mesh everyone might
         conn.on('open', () => {
             setConnectedPeers(prev => new Map(prev).set(conn.peer, conn));
@@ -278,7 +276,6 @@ export default function App() {
       setIsMultiplayer(true);
       setIsHost(false);
       
-      // @ts-ignore
       const peer = new Peer();
       peerInstance.current = peer;
 
