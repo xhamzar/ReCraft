@@ -27,6 +27,13 @@ export const Terrain: React.FC<TerrainProps> = ({ seed, playerPosition, modified
   const currentChunkRef = useRef<{x: number, z: number, dist: number} | null>(null);
   const lastUpdateRef = useRef(0);
 
+  // CRITICAL FIX: Reset everything when seed changes (Multiplayer Join)
+  useEffect(() => {
+    setRenderedChunks([]);
+    currentChunkRef.current = null;
+    targetChunksRef.current.clear();
+  }, [seed]);
+
   useFrame((state) => {
     if (!playerPosition.current) return;
 

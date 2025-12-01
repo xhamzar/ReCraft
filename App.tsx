@@ -357,6 +357,11 @@ export default function App() {
           // Initial Time Sync
           serverTimeTargetRef.current = payload.time;
           
+          // Teleport to spawn/host position immediately
+          if (payload.spawnPos) {
+              playerPositionRef.current.copy(new THREE.Vector3(payload.spawnPos.x, payload.spawnPos.y, payload.spawnPos.z));
+          }
+
           // Force terrain refresh
           setChunkVersions(new Map()); 
           setIsConnecting(false); // Client is ready!
