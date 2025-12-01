@@ -4,6 +4,7 @@ import React from 'react';
 interface HUDProps {
   health: number;
   onOpenSettings: () => void;
+  onChat: () => void;
 }
 
 const PixelHeartIcon: React.FC<{ filled: boolean }> = ({ filled }) => (
@@ -33,7 +34,13 @@ const PixelGearIcon = () => (
     </svg>
 );
 
-export const HUD: React.FC<HUDProps> = ({ health, onOpenSettings }) => {
+const ChatIcon = () => (
+    <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white">
+        <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2M20 16H6L4 18V4H20V16Z" />
+    </svg>
+);
+
+export const HUD: React.FC<HUDProps> = ({ health, onOpenSettings, onChat }) => {
   return (
     <div className="absolute top-0 left-0 right-0 p-4 z-50 pointer-events-none flex justify-between items-start font-vt323">
         {/* Health */}
@@ -46,13 +53,24 @@ export const HUD: React.FC<HUDProps> = ({ health, onOpenSettings }) => {
             </div>
         </div>
 
-        {/* Settings Button */}
-        <button 
-            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onOpenSettings(); }}
-            className="pointer-events-auto w-12 h-12 flex items-center justify-center pixel-btn active:translate-y-1 transition-transform"
-        >
-            <PixelGearIcon />
-        </button>
+        {/* Right Side Buttons */}
+        <div className="flex flex-col gap-2 pointer-events-auto items-end">
+            {/* Settings Button */}
+            <button 
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onOpenSettings(); }}
+                className="w-12 h-12 flex items-center justify-center pixel-btn active:translate-y-1 transition-transform"
+            >
+                <PixelGearIcon />
+            </button>
+
+            {/* Chat Button */}
+            <button 
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onChat(); }}
+                className="w-12 h-12 flex items-center justify-center pixel-btn active:translate-y-1 transition-transform bg-blue-600 hover:bg-blue-500"
+            >
+                <ChatIcon />
+            </button>
+        </div>
     </div>
   );
 };

@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -243,11 +244,12 @@ export const Cow: React.FC<CowProps> = React.memo(({
         <mesh ref={bodyRef} position={[0, 0.85, 0]} castShadow receiveShadow material={whiteMaterial}>
             <boxGeometry args={[0.9, 0.8, 1.4]} />
         </mesh>
-        <mesh position={[0.25, 1.05, 0.3]} castShadow receiveShadow material={blackMaterial}>
-            <boxGeometry args={[0.3, 0.4, 0.5]} />
+        {/* Z-FIGHTING FIX: Moved patches slightly to stick out of body mesh */}
+        <mesh position={[0.3, 1.06, 0.3]} castShadow receiveShadow material={blackMaterial}>
+            <boxGeometry args={[0.32, 0.42, 0.5]} />
         </mesh>
-         <mesh position={[-0.3, 0.8, -0.4]} castShadow receiveShadow material={blackMaterial}>
-            <boxGeometry args={[0.2, 0.3, 0.4]} />
+         <mesh position={[-0.36, 0.8, -0.4]} castShadow receiveShadow material={blackMaterial}>
+            <boxGeometry args={[0.22, 0.3, 0.4]} />
         </mesh>
         
         {/* Head */}
@@ -258,10 +260,11 @@ export const Cow: React.FC<CowProps> = React.memo(({
             <mesh position={[0, -0.1, -0.4]} castShadow receiveShadow material={noseMaterial} >
                 <boxGeometry args={[0.5, 0.3, 0.2]} />
             </mesh>
-             <mesh position={[-0.2, 0.15, -0.4]} castShadow material={blackMaterial}>
+            {/* Z-FIGHTING FIX: Moved eyes forward to -0.41 */}
+             <mesh position={[-0.2, 0.15, -0.41]} castShadow material={blackMaterial}>
                 <boxGeometry args={[0.1, 0.1, 0.1]} />
             </mesh>
-             <mesh position={[0.2, 0.15, -0.4]} castShadow material={blackMaterial}>
+             <mesh position={[0.2, 0.15, -0.41]} castShadow material={blackMaterial}>
                 <boxGeometry args={[0.1, 0.1, 0.1]} />
             </mesh>
             <mesh position={[-0.4, 0.25, 0]} castShadow receiveShadow material={hornMaterial} >

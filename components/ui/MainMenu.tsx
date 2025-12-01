@@ -1,12 +1,17 @@
+
 import React, { useState, useEffect } from 'react';
 
 interface MainMenuProps {
   onStartGame: () => void;
   onOpenSettings: () => void;
+  onHostGame: () => void;
+  onJoinGame: (id: string) => void;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings, onHostGame, onJoinGame }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showJoinInput, setShowJoinInput] = useState(false);
+  const [hostId, setHostId] = useState('');
 
   useEffect(() => {
     const handleChange = () => {
@@ -38,25 +43,68 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenSettings 
       </div>
 
       <div className="flex flex-col gap-4 w-full max-w-xs">
-        <button
-          onClick={onStartGame}
-          className="w-full py-4 pixel-btn text-white font-bold text-3xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-green-700 hover:bg-green-600"
-        >
-          Start Game
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1"
-        >
-          Options
-        </button>
-        
-        <button
-          onClick={toggleFullscreen}
-          className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-blue-700 hover:bg-blue-600"
-        >
-          {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-        </button>
+        {!showJoinInput ? (
+            <>
+                <button
+                onClick={onStartGame}
+                className="w-full py-4 pixel-btn text-white font-bold text-3xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-green-700 hover:bg-green-600"
+                >
+                Single Player
+                </button>
+                
+                <div className="flex gap-2">
+                    <button
+                        onClick={onHostGame}
+                        className="flex-1 py-3 pixel-btn text-white font-bold text-xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-purple-700 hover:bg-purple-600"
+                    >
+                        Host Game
+                    </button>
+                    <button
+                        onClick={() => setShowJoinInput(true)}
+                        className="flex-1 py-3 pixel-btn text-white font-bold text-xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-indigo-700 hover:bg-indigo-600"
+                    >
+                        Join Game
+                    </button>
+                </div>
+
+                <button
+                onClick={onOpenSettings}
+                className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1"
+                >
+                Options
+                </button>
+                
+                <button
+                onClick={toggleFullscreen}
+                className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-blue-700 hover:bg-blue-600"
+                >
+                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                </button>
+            </>
+        ) : (
+            <div className="flex flex-col gap-4">
+                 <input 
+                    type="text" 
+                    placeholder="Enter Host ID" 
+                    value={hostId}
+                    onChange={(e) => setHostId(e.target.value)}
+                    className="w-full p-4 text-black font-vt323 text-2xl bg-gray-200 border-4 border-black outline-none"
+                 />
+                 <button
+                    onClick={() => onJoinGame(hostId)}
+                    disabled={!hostId}
+                    className="w-full py-3 pixel-btn text-white font-bold text-2xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 bg-green-700 hover:bg-green-600 disabled:opacity-50"
+                >
+                    Connect
+                </button>
+                <button
+                    onClick={() => setShowJoinInput(false)}
+                    className="w-full py-3 pixel-btn text-white font-bold text-xl uppercase tracking-widest hover:bg-gray-600 active:translate-y-1"
+                >
+                    Back
+                </button>
+            </div>
+        )}
       </div>
       
       <p className="absolute bottom-4 text-gray-500 text-lg">Created with React & Three.js</p>

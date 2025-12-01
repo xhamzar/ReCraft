@@ -25,6 +25,7 @@ interface InteractionControllerProps {
   onDropItem: (blockId: number, x: number, y: number, z: number) => void;
   onPlace: () => void;
   onOpenCraftingTable: () => void;
+  onBlockUpdate?: (key: string, val: number) => void; // Added for networking
 }
 
 const isWater = (type: number) => {
@@ -34,9 +35,16 @@ const isWater = (type: number) => {
 const ALL_NEIGHBORS = [ {x:1,y:0,z:0}, {x:-1,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:-1,z:0}, {x:0,y:0,z:1}, {x:0,y:0,z:-1} ];
 
 export const InteractionController = forwardRef<InteractionControllerHandle, InteractionControllerProps>(
-  ({ modifiedBlocks, terrainSeed, playerPositionRef, playerRotationRef, updateChunkVersions, selectedItem, onSleep, onDropItem, onPlace, onOpenCraftingTable }, ref) => {
+  ({ modifiedBlocks, terrainSeed, playerPositionRef, playerRotationRef, updateChunkVersions, selectedItem, onSleep, onDropItem, onPlace, onOpenCraftingTable, onBlockUpdate }, ref) => {
     const { camera, raycaster, scene } = useThree();
     const noise = useMemo(() => new SimplexNoise(terrainSeed), [terrainSeed]);
+
+    // Helper to set block and notify
+    const setBlock = (x: number, y: number, z: number, type: number) => {
+        const key = `${x},${y},${z}`;
+        modifiedBlocks.current.set(key, type);
+        if (onBlockUpdate) onBlockUpdate(key, type);
+    };
 
     useImperativeHandle(ref, () => ({
       handleTap: (clientX: number, clientY: number) => {
@@ -68,8 +76,8 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
             const topY = isBottom ? by + 1 : by;
             const newBottom = isOpen ? BLOCK.DOOR_BOTTOM : BLOCK.DOOR_BOTTOM_OPEN;
             const newTop = isOpen ? BLOCK.DOOR_TOP : BLOCK.DOOR_TOP_OPEN;
-            modifiedBlocks.current.set(`${bx},${bottomY},${bz}`, newBottom);
-            modifiedBlocks.current.set(`${bx},${topY},${bz}`, newTop);
+            setBlock(bx, bottomY, bz, newBottom);
+            setBlock(bx, topY, bz, newTop);
             updateChunkVersions(Array.from(affectedChunks));
             return;
         } 
@@ -111,7 +119,7 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
                 const blockAt = getBlock(placePos.x, placePos.y, placePos.z, noise, modifiedBlocks.current);
                 
                 if (blockBelow === BLOCK.FARMLAND && (blockAt === BLOCK.AIR || isWater(blockAt))) {
-                    modifiedBlocks.current.set(`${placePos.x},${placePos.y},${placePos.z}`, BLOCK.WHEAT_STAGE_0);
+                    setBlock(placePos.x, placePos.y, placePos.z, BLOCK.WHEAT_STAGE_0);
                     placed = true;
                 }
             } else if (selectedBlockId === BLOCK.STAIR || selectedBlockId === BLOCK.COBBLESTONE_STAIR) {
@@ -123,13 +131,13 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
                 } else {
                     blockToPlace = baseDir.z > 0 ? baseStair + 2 : baseStair + 0;
                 }
-                modifiedBlocks.current.set(`${placePos.x},${placePos.y},${placePos.z}`, blockToPlace);
+                setBlock(placePos.x, placePos.y, placePos.z, blockToPlace);
                 placed = true;
             } else if (selectedBlockId === BLOCK.DOOR_BOTTOM) {
                 const aboveType = getBlock(placePos.x, placePos.y + 1, placePos.z, noise, modifiedBlocks.current);
                 if (aboveType === BLOCK.AIR || isWater(aboveType)) {
-                    modifiedBlocks.current.set(`${placePos.x},${placePos.y},${placePos.z}`, BLOCK.DOOR_BOTTOM);
-                    modifiedBlocks.current.set(`${placePos.x},${placePos.y + 1},${placePos.z}`, BLOCK.DOOR_TOP);
+                    setBlock(placePos.x, placePos.y, placePos.z, BLOCK.DOOR_BOTTOM);
+                    setBlock(placePos.x, placePos.y + 1, placePos.z, BLOCK.DOOR_TOP);
                     placed = true;
                 }
             } else if (selectedBlockId === BLOCK.BED_ITEM) {
@@ -151,8 +159,8 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
                 if (headType === BLOCK.AIR || isWater(headType)) {
                      const footBlock = BLOCK.BED_FOOT_NORTH + directionIdx;
                      const headBlock = BLOCK.BED_HEAD_NORTH + directionIdx;
-                     modifiedBlocks.current.set(`${placePos.x},${placePos.y},${placePos.z}`, footBlock);
-                     modifiedBlocks.current.set(`${headX},${placePos.y},${headZ}`, headBlock);
+                     setBlock(placePos.x, placePos.y, placePos.z, footBlock);
+                     setBlock(headX, placePos.y, headZ, headBlock);
                      placeAffectedChunks.add(`${Math.floor(headX / Config.CHUNK_SIZE)},${Math.floor(headZ / Config.CHUNK_SIZE)}`);
                      placed = true;
                 }
@@ -177,11 +185,11 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
                     torchBlock = BLOCK.TORCH;
                 }
                 
-                modifiedBlocks.current.set(`${placePos.x},${placePos.y},${placePos.z}`, torchBlock);
+                setBlock(placePos.x, placePos.y, placePos.z, torchBlock);
                 placed = true;
 
             } else if (selectedBlockId !== BLOCK.AIR) {
-                modifiedBlocks.current.set(`${placePos.x},${placePos.y},${placePos.z}`, selectedBlockId);
+                setBlock(placePos.x, placePos.y, placePos.z, selectedBlockId);
                 if (isWater(selectedBlockId)) addToWaterQueue(placePos.x, placePos.y, placePos.z);
                 placed = true;
             }
@@ -198,7 +206,7 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
             // Trigger Loot Drop
             onDropItem(type, bx, by, bz);
 
-            modifiedBlocks.current.set(`${bx},${by},${bz}`, BLOCK.AIR);
+            setBlock(bx, by, bz, BLOCK.AIR);
             for(const dir of ALL_NEIGHBORS) {
                 const nx = bx + dir.x, ny = by + dir.y, nz = bz + dir.z;
                 if (isWater(getBlock(nx, ny, nz, noise, modifiedBlocks.current))) {
@@ -235,7 +243,7 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
                 onDropItem(BLOCK.BED_ITEM, centerX, centerY, centerZ);
 
                 // Remove Clicked Part
-                modifiedBlocks.current.set(`${centerX},${centerY},${centerZ}`, BLOCK.AIR);
+                setBlock(centerX, centerY, centerZ, BLOCK.AIR);
                 affectedChunks.add(`${Math.floor(centerX / Config.CHUNK_SIZE)},${Math.floor(centerZ / Config.CHUNK_SIZE)}`);
 
                 // Remove Partner Part
@@ -261,7 +269,7 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
 
                 const otherActualType = getBlock(otherX, centerY, otherZ, noise, modifiedBlocks.current);
                 if (otherActualType === targetOtherType) {
-                    modifiedBlocks.current.set(`${otherX},${centerY},${otherZ}`, BLOCK.AIR);
+                    setBlock(otherX, centerY, otherZ, BLOCK.AIR);
                     affectedChunks.add(`${Math.floor(otherX / Config.CHUNK_SIZE)},${Math.floor(otherZ / Config.CHUNK_SIZE)}`);
                 }
                 
@@ -288,7 +296,7 @@ export const InteractionController = forwardRef<InteractionControllerHandle, Int
                         // Protect beds from accidental radius destruction (must aim at them directly)
                         if (type >= BLOCK.BED_FOOT_NORTH && type <= BLOCK.BED_HEAD_WEST) continue;
 
-                        modifiedBlocks.current.set(`${bx},${by},${bz}`, BLOCK.AIR);
+                        setBlock(bx, by, bz, BLOCK.AIR);
                         affectedChunks.add(`${Math.floor(bx / Config.CHUNK_SIZE)},${Math.floor(bz / Config.CHUNK_SIZE)}`);
 
                         for(const dir of ALL_NEIGHBORS) {

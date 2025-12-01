@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
@@ -16,6 +17,7 @@ import { CropSystem } from './components/CropSystem';
 import { ItemDropManager, ItemDropManagerHandle } from './components/ItemDropManager';
 import { SimplexNoise } from './engine/math/Noise';
 import { updateFluids } from './engine/world/WaterSystem';
+import { RemotePlayer } from './components/RemotePlayer';
 
 // UI Imports
 import { HUD } from './components/ui/HUD';
@@ -26,12 +28,16 @@ import { GameOver } from './components/ui/GameOver';
 import { SettingsMenu, GameSettings } from './components/ui/SettingsMenu';
 import { MainMenu } from './components/ui/MainMenu';
 import { LoadingScreen } from './components/ui/LoadingScreen';
+import { ChatBox } from './components/ui/ChatBox';
 
-import { ControlState, ItemStack } from './types';
+import { ControlState, ItemStack, InitPayload, PlayerUpdatePayload, BlockUpdatePayload, ChatPayload } from './types';
 import { BLOCK } from './engine/world/BlockRegistry';
 import { Config } from './engine/core/Config';
 import { INVENTORY, getItemDef } from './engine/items/ItemRegistry';
 import { Recipe } from './data/recipes';
+
+// --- PEERJS GLOBAL DEF ---
+declare var Peer: any;
 
 const FluidSimulator = React.memo(({ 
     playerPositionRef, 
@@ -112,7 +118,17 @@ export default function App() {
   
   const [chunkVersions, setChunkVersions] = useState<Map<string, number>>(new Map());
   
-  const [seed] = useState(() => Math.random());
+  // NETWORKING STATE
+  const [seed, setSeed] = useState(() => Math.random());
+  const [isMultiplayer, setIsMultiplayer] = useState(false);
+  const [isHost, setIsHost] = useState(false);
+  const [myPeerId, setMyPeerId] = useState<string>("");
+  const [connectedPeers, setConnectedPeers] = useState<Map<string, any>>(new Map()); // Map of DataConnections
+  const [remotePlayers, setRemotePlayers] = useState<Map<string, PlayerUpdatePayload>>(new Map());
+  const peerInstance = useRef<any>(null);
+  
+  const [chatMessages, setChatMessages] = useState<ChatPayload[]>([]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   
   const [playerHealth, setPlayerHealth] = useState(10);
   const [damageFlash, setDamageFlash] = useState(false);
@@ -145,15 +161,188 @@ export default function App() {
       visualStyle: 'smooth',
       showFps: false,
   });
+  
+  const isModalOpen = isInventoryOpen || isSettingsOpen || isCraftingTableOpen || isChatOpen;
+
+  // --- MULTIPLAYER LOGIC ---
+  
+  // Helper to send data to all connected peers
+  const broadcastData = useCallback((data: any) => {
+      connectedPeers.forEach(conn => {
+          if(conn.open) conn.send(data);
+      });
+  }, [connectedPeers]);
+
+  const initPeer = useCallback((id?: string) => {
+    // @ts-ignore
+    const peer = new Peer(id); // Create a new peer, optionally with an ID
+    peerInstance.current = peer;
+
+    peer.on('open', (id: string) => {
+        setMyPeerId(id);
+        if (isHost) {
+            setToastMessage(`ID: ${id} (Copied!)`);
+            navigator.clipboard.writeText(id);
+            setGameState('playing');
+        }
+    });
+
+    peer.on('connection', (conn: any) => {
+        // Only Host receives connections usually, but in mesh everyone might
+        conn.on('open', () => {
+            setConnectedPeers(prev => new Map(prev).set(conn.peer, conn));
+            
+            // If I am host, send INIT data immediately
+            if (isHost) {
+                const initData: InitPayload = {
+                    seed,
+                    modifiedBlocks: Array.from(modifiedBlocksRef.current.entries()),
+                    spawnPos: playerPositionRef.current
+                };
+                conn.send({ type: 'INIT', payload: initData });
+                setToastMessage(`Player joined!`);
+                setTimeout(() => setToastMessage(""), 2000);
+            }
+        });
+
+        conn.on('data', (data: any) => handleNetworkData(data, conn.peer));
+        
+        conn.on('close', () => {
+             setConnectedPeers(prev => {
+                 const next = new Map(prev);
+                 next.delete(conn.peer);
+                 return next;
+             });
+             setRemotePlayers(prev => {
+                 const next = new Map(prev);
+                 next.delete(conn.peer);
+                 return next;
+             });
+             setToastMessage("Player left");
+             setTimeout(() => setToastMessage(""), 2000);
+        });
+    });
+  }, [isHost, seed]);
+
+  const handleNetworkData = useCallback((data: any, peerId: string) => {
+      if (data.type === 'INIT') {
+          // Client receiving world data from Host
+          const payload = data.payload as InitPayload;
+          setSeed(payload.seed);
+          modifiedBlocksRef.current = new Map(payload.modifiedBlocks);
+          // Force terrain refresh
+          setChunkVersions(new Map()); 
+          setGameState('playing');
+          setToastMessage("Connected to Host!");
+          setTimeout(() => setToastMessage(""), 2000);
+      } 
+      else if (data.type === 'PLAYER_UPDATE') {
+          const payload = data.payload as PlayerUpdatePayload;
+          setRemotePlayers(prev => new Map(prev).set(payload.id, payload));
+      }
+      else if (data.type === 'BLOCK_UPDATE') {
+          const payload = data.payload as BlockUpdatePayload;
+          modifiedBlocksRef.current.set(payload.key, payload.val);
+          // Trigger React Update for Chunk
+          const [x, , z] = payload.key.split(',').map(Number);
+          const chunkKey = `${Math.floor(x / Config.CHUNK_SIZE)},${Math.floor(z / Config.CHUNK_SIZE)}`;
+          setChunkVersions(prev => new Map(prev).set(chunkKey, (prev.get(chunkKey)||0) + 1));
+          
+          // If we are Host, we must rebroadcast this to OTHER clients (Mesh/Star topology)
+          if (isHost) {
+               connectedPeers.forEach(conn => {
+                   if (conn.peer !== peerId && conn.open) conn.send(data);
+               });
+          }
+      }
+      else if (data.type === 'CHAT') {
+          const payload = data.payload as ChatPayload;
+          setChatMessages(prev => [...prev, payload]);
+          
+          // If we are Host, rebroadcast chat to other clients
+          if (isHost) {
+               connectedPeers.forEach(conn => {
+                   if (conn.peer !== peerId && conn.open) conn.send(data);
+               });
+          }
+      }
+  }, [isHost, connectedPeers]);
+
+  const handleHostGame = () => {
+      setIsMultiplayer(true);
+      setIsHost(true);
+      initPeer(); // Auto-generate ID
+  };
+
+  const handleJoinGame = (hostId: string) => {
+      setIsMultiplayer(true);
+      setIsHost(false);
+      
+      // @ts-ignore
+      const peer = new Peer();
+      peerInstance.current = peer;
+
+      peer.on('open', (id: string) => {
+          setMyPeerId(id);
+          const conn = peer.connect(hostId);
+          conn.on('open', () => {
+              setConnectedPeers(new Map().set(hostId, conn));
+              setToastMessage("Joining...");
+          });
+          conn.on('data', (data: any) => handleNetworkData(data, hostId));
+          conn.on('error', (err: any) => {
+              setToastMessage("Connection Failed");
+              setTimeout(() => setToastMessage(""), 2000);
+              setGameState('menu');
+          });
+      });
+  };
+  
+  const handleSendChat = (message: string) => {
+      const payload: ChatPayload = {
+          id: Math.random().toString(36).substr(2, 9),
+          senderId: myPeerId,
+          senderName: myPeerId.substr(0, 5),
+          message,
+          timestamp: Date.now()
+      };
+      
+      // Add locally
+      setChatMessages(prev => [...prev, payload]);
+      
+      // Broadcast
+      if (isMultiplayer) {
+          broadcastData({ type: 'CHAT', payload });
+      }
+  };
+
+  // --- NETWORK LOOP ---
+  // Broadcast my position every 50ms
+  useEffect(() => {
+      if (!isMultiplayer || gameState !== 'playing') return;
+      
+      const interval = setInterval(() => {
+          const payload: PlayerUpdatePayload = {
+              id: myPeerId,
+              pos: playerPositionRef.current.toArray() as [number,number,number],
+              rot: playerRotationRef.current.toArray() as [number,number,number,number],
+              animState: { walking: false, crouching: isCrouching } // Simplified anim state
+          };
+          broadcastData({ type: 'PLAYER_UPDATE', payload });
+      }, 50);
+
+      return () => clearInterval(interval);
+  }, [isMultiplayer, gameState, myPeerId, broadcastData, isCrouching]);
+
 
   useEffect(() => {
-    if (gameState === 'loading') {
+    if (gameState === 'loading' && !isMultiplayer) {
       const timer = setTimeout(() => {
         setGameState('menu');
-      }, 2500); // Simulate 2.5s loading time
+      }, 2500); 
       return () => clearTimeout(timer);
     }
-  }, [gameState]);
+  }, [gameState, isMultiplayer]);
 
   useEffect(() => {
       setSettings(prev => ({
@@ -161,6 +350,21 @@ export default function App() {
           antiAliasing: prev.visualStyle === 'smooth'
       }));
   }, [settings.visualStyle]);
+  
+  // Keyboard listeners for Chat
+  useEffect(() => {
+      if (gameState !== 'playing') return;
+      
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if ((e.key === 't' || e.key === 'T' || e.key === 'Enter') && !isChatOpen && !isInventoryOpen && !isCraftingTableOpen) {
+              e.preventDefault();
+              setIsChatOpen(true);
+          }
+      };
+      
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [gameState, isChatOpen, isInventoryOpen, isCraftingTableOpen]);
 
   const touchLookId = useRef<number | null>(null);
   const lastTouchPos = useRef<{ x: number, y: number } | null>(null);
@@ -344,6 +548,11 @@ export default function App() {
   }, [activeSlot]);
   
   const handleBlockBreakDrop = useCallback((blockId: number, x: number, y: number, z: number) => {
+      // NETWORK BROADCAST: Block Broken (Air)
+      if (isMultiplayer) {
+           broadcastData({ type: 'BLOCK_UPDATE', payload: { key: `${x},${y},${z}`, val: BLOCK.AIR } });
+      }
+
       let dropId = blockId;
       let extraItem = -1;
 
@@ -383,7 +592,23 @@ export default function App() {
 
       spawnItem(dropId);
       if (extraItem !== -1) spawnItem(extraItem);
-  }, []);
+  }, [isMultiplayer, broadcastData]);
+
+  // Wrapped Place handler to broadcast changes
+  const handlePlaceBlock = useCallback(() => {
+      handleConsumeItem();
+      // NOTE: We don't have the exact coord here, InteractionController sets the map directly.
+      // Ideally InteractionController returns the pos. 
+      // For now, InteractionController handles local map set.
+      // To sync place, we need InteractionController to call a prop that broadcasts.
+  }, [handleConsumeItem]);
+
+  // New specific callback for network syncing placements from InteractionController
+  const handleBlockUpdateSync = useCallback((key: string, val: number) => {
+      if (isMultiplayer) {
+          broadcastData({ type: 'BLOCK_UPDATE', payload: { key, val } });
+      }
+  }, [isMultiplayer, broadcastData]);
 
   const handlePickup = useCallback((itemType: number): boolean => {
       const success = handleAddItemRef.current({ id: itemType, count: 1 });
@@ -394,8 +619,6 @@ export default function App() {
       }
       return success;
   }, []);
-
-  const isModalOpen = isInventoryOpen || isSettingsOpen || isCraftingTableOpen;
 
   const isTouchInControlArea = (x: number, y: number) => {
       const h = window.innerHeight;
@@ -517,7 +740,12 @@ export default function App() {
       {gameState === 'loading' && <LoadingScreen />}
       
       {gameState === 'menu' && (
-        <MainMenu onStartGame={() => setGameState('playing')} onOpenSettings={() => setIsSettingsOpen(true)} />
+        <MainMenu 
+            onStartGame={() => { setIsMultiplayer(false); setGameState('playing'); }} 
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onHostGame={handleHostGame}
+            onJoinGame={handleJoinGame}
+        />
       )}
 
       {gameState === 'playing' && (
@@ -540,6 +768,22 @@ export default function App() {
                   <span className="uppercase tracking-widest text-xl">FISH CAUGHT!</span>
               </div>
           </div>
+
+          {isMultiplayer && isHost && (
+             <div className="absolute top-2 right-2 z-50 pointer-events-auto">
+                 <div className="bg-black/50 text-white p-2 text-sm font-mono cursor-pointer" onClick={() => {navigator.clipboard.writeText(myPeerId); setToastMessage("Copied ID!"); setTimeout(()=>setToastMessage(""), 1000);}}>
+                    Host ID: {myPeerId || "Generating..."} (Tap to copy)
+                 </div>
+             </div>
+          )}
+          
+          <ChatBox 
+            isOpen={isChatOpen} 
+            onClose={() => setIsChatOpen(false)} 
+            messages={chatMessages} 
+            onSendMessage={handleSendChat}
+            myId={myPeerId}
+          />
 
           <Canvas 
             shadows={settings.shadows} 
@@ -567,6 +811,17 @@ export default function App() {
                 renderDistance={settings.renderDistance} 
                 visualStyle={settings.visualStyle}
             />
+            
+            {/* Render Remote Players */}
+            {Array.from(remotePlayers.values()).map((rp: PlayerUpdatePayload) => (
+                <RemotePlayer 
+                    key={rp.id}
+                    position={new THREE.Vector3(...rp.pos)}
+                    quaternion={new THREE.Quaternion(...rp.rot)}
+                    isCrouching={rp.animState.crouching}
+                />
+            ))}
+
             <TorchLightSystem playerPositionRef={playerPositionRef} modifiedBlocks={modifiedBlocksRef} />
             <CropSystem modifiedBlocks={modifiedBlocksRef} updateChunkVersions={updateChunkVersions} />
             <ItemDropManager 
@@ -591,16 +846,31 @@ export default function App() {
                 selectedItem={selectedItem}
                 onSleep={() => gameTimeManagerRef.current?.trySleep()} 
                 onDropItem={handleBlockBreakDrop}
-                onPlace={handleConsumeItem}
+                onPlace={handlePlaceBlock}
                 onOpenCraftingTable={handleOpenCraftingTable}
+                onBlockUpdate={handleBlockUpdateSync}
             />
+            
             <FishingSystem ref={fishingRef} playerPositionRef={playerPositionRef} playerRotationRef={playerRotationRef} onCatch={onCatchHandler} />
             {settings.showFps && <Stats className="!left-auto !right-0 !top-16 opacity-50" />}
           </Canvas>
 
           <div className="absolute inset-0 pointer-events-none flex flex-col z-20">
-            <HUD health={playerHealth} onOpenSettings={() => setIsSettingsOpen(true)} />
-            {!isModalOpen && ( <div className="flex-1 relative"> <GameControls onMove={handleMove} onAction={handleAction} onJump={handleJump} onCrouch={handleCrouch} isCrouching={isCrouching} visualStyle={settings.visualStyle} /> </div> )}
+            <HUD 
+                health={playerHealth} 
+                onOpenSettings={() => setIsSettingsOpen(true)} 
+                onChat={() => setIsChatOpen(true)}
+            />
+            {!isModalOpen && ( <div className="flex-1 relative"> 
+                <GameControls 
+                    onMove={handleMove} 
+                    onAction={handleAction} 
+                    onJump={handleJump} 
+                    onCrouch={handleCrouch} 
+                    isCrouching={isCrouching} 
+                    visualStyle={settings.visualStyle} 
+                /> 
+            </div> )}
             <InventoryBar hotbar={hotbar} activeSlot={activeSlot} onSelectSlot={setActiveSlot} onOpenInventory={() => setIsInventoryOpen(true)} onDrop={handleDropItem} />
           </div>
           
