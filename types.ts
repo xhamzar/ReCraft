@@ -23,7 +23,7 @@ export interface ItemStack {
 
 // --- NETWORK TYPES ---
 
-export type PacketType = 'INIT' | 'PLAYER_UPDATE' | 'BLOCK_UPDATE' | 'CHAT';
+export type PacketType = 'INIT' | 'PLAYER_UPDATE' | 'BLOCK_UPDATE' | 'CHAT' | 'TIME_SYNC';
 
 export interface NetworkPacket {
   type: PacketType;
@@ -34,6 +34,7 @@ export interface InitPayload {
   seed: number;
   modifiedBlocks: [string, number][]; // Send map as array of entries
   spawnPos: {x: number, y: number, z: number};
+  time: number; // Sync world time immediately
 }
 
 export interface PlayerUpdatePayload {
@@ -41,6 +42,8 @@ export interface PlayerUpdatePayload {
   pos: [number, number, number];
   rot: [number, number, number, number]; // Quaternion array
   animState: { walking: boolean, crouching: boolean };
+  username: string;
+  color: string;
 }
 
 export interface BlockUpdatePayload {
@@ -54,4 +57,8 @@ export interface ChatPayload {
   senderName: string; // Short ID or custom name
   message: string;
   timestamp: number;
+}
+
+export interface TimeSyncPayload {
+  time: number;
 }

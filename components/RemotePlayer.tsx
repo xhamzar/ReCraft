@@ -1,5 +1,7 @@
+
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { BLOCK_TEXTURES } from '../engine/graphics/TextureGenerator';
 
@@ -7,9 +9,11 @@ interface RemotePlayerProps {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
   isCrouching: boolean;
+  username: string;
+  color: string;
 }
 
-export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion, isCrouching }) => {
+export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion, isCrouching, username, color }) => {
   const groupRef = useRef<THREE.Group>(null);
   
   // Animation refs
@@ -72,7 +76,7 @@ export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion
         </mesh>
         <mesh ref={bodyRef} position={[0, 1.125, 0]} castShadow receiveShadow>
             <boxGeometry args={[0.5, 0.75, 0.25]} />
-            <meshStandardMaterial map={BLOCK_TEXTURES.player_torso} color="#ffaaaa" /> {/* Tint red to distinguish other players */}
+            <meshStandardMaterial map={BLOCK_TEXTURES.player_torso} color={color} /> 
         </mesh>
         <mesh ref={leftArmRef} position={[-0.375, 1.125, 0]} geometry={new THREE.BoxGeometry(0.25, 0.75, 0.25)} castShadow receiveShadow>
             <meshStandardMaterial map={BLOCK_TEXTURES.player_arm} />
@@ -87,11 +91,24 @@ export const RemotePlayer: React.FC<RemotePlayerProps> = ({ position, quaternion
             <meshStandardMaterial map={BLOCK_TEXTURES.player_leg} />
         </mesh>
       </group>
-      {/* Gamertag */}
-      <mesh position={[0, 2.3, 0]}>
-         <planeGeometry args={[1, 0.25]} />
-         <meshBasicMaterial color="black" opacity={0.5} transparent />
-      </mesh>
+      
+      {/* Nametag */}
+      <group position={[0, 2.3, 0]}>
+         {/* Background for text legibility */}
+         <mesh position={[0, 0, -0.01]}>
+             <planeGeometry args={[username.length * 0.15 + 0.2, 0.3]} />
+             <meshBasicMaterial color="black" opacity={0.4} transparent />
+         </mesh>
+         <Text
+            fontSize={0.2}
+            color="white"
+            anchorX="center"
+            anchorY="middle"
+            font="https://fonts.gstatic.com/s/vt323/v17/pxiKyp0ih+F2yuMtiGx2.woff" // VT323 Font
+         >
+            {username}
+         </Text>
+      </group>
     </group>
   );
 };

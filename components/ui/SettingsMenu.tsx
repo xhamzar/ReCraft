@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 
 export interface GameSettings {
@@ -14,10 +15,13 @@ interface SettingsMenuProps {
   onClose: () => void;
   settings: GameSettings;
   onUpdateSettings: (newSettings: GameSettings) => void;
+  onQuit: () => void;
+  hostId?: string;
 }
 
-export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isOpen, onClose, settings, onUpdateSettings }) => {
+export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isOpen, onClose, settings, onUpdateSettings, onQuit, hostId }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   useEffect(() => {
     const handleChange = () => {
@@ -61,6 +65,28 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isOpen, onClose, set
         </div>
 
         <div className={`space-y-6 ${isPixel ? 'font-vt323' : 'font-sans'}`}>
+          
+          {/* Host ID Section - Only visible if hosting */}
+          {hostId && (
+            <div className={`p-3 ${isPixel ? 'bg-black/40 border-2 border-yellow-600' : 'bg-yellow-900/20 border border-yellow-600/50 rounded-lg'}`}>
+               <span className="text-yellow-500 text-sm font-bold uppercase block mb-2">Server Host ID (Share this)</span>
+               <div className="flex gap-2">
+                   <code className="flex-1 bg-black/60 text-white p-2 font-mono text-sm border border-white/20 truncate select-all flex items-center">
+                       {hostId}
+                   </code>
+                   <button 
+                       onClick={() => {
+                           navigator.clipboard.writeText(hostId);
+                           setCopyFeedback(true);
+                           setTimeout(() => setCopyFeedback(false), 2000);
+                       }}
+                       className={`px-4 py-1 text-white font-bold text-sm uppercase flex items-center justify-center min-w-[80px] ${isPixel ? 'pixel-btn bg-yellow-700 hover:bg-yellow-600' : 'bg-yellow-600 hover:bg-yellow-500 rounded shadow-sm'}`}
+                   >
+                       {copyFeedback ? 'COPIED!' : 'COPY'}
+                   </button>
+               </div>
+            </div>
+          )}
             
           <div className={`flex items-center justify-between p-3 ${isPixel ? 'bg-black/40 border-2 border-gray-700' : 'bg-slate-700/50 rounded-lg'}`}>
             <span className="text-white text-xl uppercase">Visual Style</span>
@@ -135,10 +161,16 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isOpen, onClose, set
           </div>
           
         </div>
+        
+        <div className="flex flex-col gap-2 mt-2">
+             <button onClick={onClose} className={`w-full py-3 text-white font-bold text-xl uppercase ${isPixel ? 'pixel-btn hover:bg-gray-600' : 'bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg'}`}>
+              Return to Game
+            </button>
+            <button onClick={onQuit} className={`w-full py-3 text-white font-bold text-xl uppercase ${isPixel ? 'pixel-btn bg-red-800 hover:bg-red-700' : 'bg-red-700 hover:bg-red-600 rounded-lg shadow-lg'}`}>
+              Disconnect / Quit
+            </button>
+        </div>
 
-        <button onClick={onClose} className={`w-full py-3 text-white font-bold text-xl uppercase ${isPixel ? 'pixel-btn hover:bg-gray-600' : 'bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg'}`}>
-          Return to Game
-        </button>
       </div>
     </div>
   );
