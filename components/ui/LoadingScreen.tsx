@@ -1,6 +1,11 @@
+
 import React from 'react';
 
-export const LoadingScreen: React.FC = () => {
+interface LoadingScreenProps {
+  message?: string;
+}
+
+export const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = "Generating Terrain..." }) => {
   return (
     <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#1a1a1a] font-vt323">
       <div className="text-center">
@@ -8,7 +13,7 @@ export const LoadingScreen: React.FC = () => {
           React Craft
         </h1>
         <p className="text-2xl text-gray-400 mb-12 uppercase tracking-wider">
-          Generating Terrain...
+          {message}
         </p>
       </div>
 

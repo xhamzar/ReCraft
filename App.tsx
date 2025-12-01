@@ -126,6 +126,10 @@ export default function App() {
   const [remotePlayers, setRemotePlayers] = useState<Map<string, PlayerUpdatePayload>>(new Map());
   const peerInstance = useRef<Peer | null>(null);
   
+  // Connection / Loading State
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [loadingText, setLoadingText] = useState("Loading...");
+  
   const [chatMessages, setChatMessages] = useState<ChatPayload[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   
@@ -165,6 +169,24 @@ export default function App() {
 
   // --- MULTIPLAYER LOGIC ---
   
+  const cleanupPeer = useCallback(() => {
+    if (peerInstance.current) {
+        peerInstance.current.destroy();
+        peerInstance.current = null;
+    }
+    setConnectedPeers(new Map());
+    setRemotePlayers(new Map());
+    setIsMultiplayer(false);
+    setIsConnecting(false);
+  }, []);
+
+  const handleConnectionError = useCallback((message: string) => {
+    cleanupPeer();
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(""), 5000);
+    setGameState('menu');
+  }, [cleanupPeer]);
+
   // Helper to send data to all connected peers
   const broadcastData = useCallback((data: any) => {
       connectedPeers.forEach(conn => {
@@ -173,54 +195,74 @@ export default function App() {
   }, [connectedPeers]);
 
   const initPeer = useCallback((id?: string) => {
-    const peer = id ? new Peer(id) : new Peer();
-    peerInstance.current = peer;
+    try {
+        const peer = id ? new Peer(id) : new Peer();
+        peerInstance.current = peer;
 
-    peer.on('open', (id: string) => {
-        setMyPeerId(id);
-        if (isHost) {
-            setToastMessage(`ID: ${id} (Copied!)`);
-            navigator.clipboard.writeText(id);
-            setGameState('playing');
-        }
-    });
-
-    peer.on('connection', (conn: DataConnection) => {
-        // Only Host receives connections usually, but in mesh everyone might
-        conn.on('open', () => {
-            setConnectedPeers(prev => new Map(prev).set(conn.peer, conn));
-            
-            // If I am host, send INIT data immediately
-            if (isHost) {
-                const initData: InitPayload = {
-                    seed,
-                    modifiedBlocks: Array.from(modifiedBlocksRef.current.entries()),
-                    spawnPos: playerPositionRef.current
-                };
-                conn.send({ type: 'INIT', payload: initData });
-                setToastMessage(`Player joined!`);
-                setTimeout(() => setToastMessage(""), 2000);
+        peer.on('error', (err) => {
+            console.error("Peer Error:", err);
+            // Don't kill host immediately on some errors, but generally report
+            if (err.type === 'peer-unavailable') {
+                handleConnectionError("Host ID not found. Check the ID.");
+            } else if (err.type === 'network') {
+                handleConnectionError("Network error. Check connection.");
+            } else if (err.type === 'unavailable-id') {
+                 handleConnectionError("ID unavailable.");
+            } else {
+                 setToastMessage(`Network Warning: ${err.type}`);
+                 setTimeout(() => setToastMessage(""), 3000);
             }
         });
 
-        conn.on('data', (data: any) => handleNetworkData(data, conn.peer));
-        
-        conn.on('close', () => {
-             setConnectedPeers(prev => {
-                 const next = new Map(prev);
-                 next.delete(conn.peer);
-                 return next;
-             });
-             setRemotePlayers(prev => {
-                 const next = new Map(prev);
-                 next.delete(conn.peer);
-                 return next;
-             });
-             setToastMessage("Player left");
-             setTimeout(() => setToastMessage(""), 2000);
+        peer.on('open', (id: string) => {
+            setMyPeerId(id);
+            if (isHost) {
+                setToastMessage(`ID: ${id} (Copied!)`);
+                navigator.clipboard.writeText(id);
+                setIsConnecting(false); // Host is ready
+                setGameState('playing');
+            }
         });
-    });
-  }, [isHost, seed]);
+
+        peer.on('connection', (conn: DataConnection) => {
+            // Only Host receives connections usually, but in mesh everyone might
+            conn.on('open', () => {
+                setConnectedPeers(prev => new Map(prev).set(conn.peer, conn));
+                
+                // If I am host, send INIT data immediately
+                if (isHost) {
+                    const initData: InitPayload = {
+                        seed,
+                        modifiedBlocks: Array.from(modifiedBlocksRef.current.entries()),
+                        spawnPos: playerPositionRef.current
+                    };
+                    conn.send({ type: 'INIT', payload: initData });
+                    setToastMessage(`Player joined!`);
+                    setTimeout(() => setToastMessage(""), 2000);
+                }
+            });
+
+            conn.on('data', (data: any) => handleNetworkData(data, conn.peer));
+            
+            conn.on('close', () => {
+                setConnectedPeers(prev => {
+                    const next = new Map(prev);
+                    next.delete(conn.peer);
+                    return next;
+                });
+                setRemotePlayers(prev => {
+                    const next = new Map(prev);
+                    next.delete(conn.peer);
+                    return next;
+                });
+                setToastMessage("Player left");
+                setTimeout(() => setToastMessage(""), 2000);
+            });
+        });
+    } catch (e) {
+        handleConnectionError("Failed to initialize network.");
+    }
+  }, [isHost, seed, handleConnectionError]);
 
   const handleNetworkData = useCallback((data: any, peerId: string) => {
       if (data.type === 'INIT') {
@@ -230,6 +272,7 @@ export default function App() {
           modifiedBlocksRef.current = new Map(payload.modifiedBlocks);
           // Force terrain refresh
           setChunkVersions(new Map()); 
+          setIsConnecting(false); // Client is ready!
           setGameState('playing');
           setToastMessage("Connected to Host!");
           setTimeout(() => setToastMessage(""), 2000);
@@ -269,30 +312,67 @@ export default function App() {
   const handleHostGame = () => {
       setIsMultiplayer(true);
       setIsHost(true);
+      setIsConnecting(true);
+      setLoadingText("Creating Server...");
       initPeer(); // Auto-generate ID
   };
 
   const handleJoinGame = (hostId: string) => {
+      if (!hostId.trim()) return;
+
       setIsMultiplayer(true);
       setIsHost(false);
+      setIsConnecting(true);
+      setLoadingText("Connecting to Host...");
       
-      const peer = new Peer();
-      peerInstance.current = peer;
+      // Connection Timeout Logic
+      const timeoutId = setTimeout(() => {
+          if (peerInstance.current && !connectedPeers.size && gameState !== 'playing') {
+              handleConnectionError("Connection Timed Out. Host unreachable or Firewall blocking.");
+          }
+      }, 15000); // 15 seconds timeout
+      
+      try {
+          const peer = new Peer();
+          peerInstance.current = peer;
 
-      peer.on('open', (id: string) => {
-          setMyPeerId(id);
-          const conn = peer.connect(hostId);
-          conn.on('open', () => {
-              setConnectedPeers(new Map().set(hostId, conn));
-              setToastMessage("Joining...");
+          peer.on('error', (err) => {
+              clearTimeout(timeoutId);
+              if (err.type === 'peer-unavailable') {
+                  handleConnectionError("Host ID not found. Please check ID.");
+              } else {
+                  handleConnectionError(`Connection failed: ${err.type}`);
+              }
           });
-          conn.on('data', (data: any) => handleNetworkData(data, hostId));
-          conn.on('error', (err: any) => {
-              setToastMessage("Connection Failed");
-              setTimeout(() => setToastMessage(""), 2000);
-              setGameState('menu');
+
+          peer.on('open', (id: string) => {
+              setMyPeerId(id);
+              const conn = peer.connect(hostId);
+              
+              conn.on('open', () => {
+                  setConnectedPeers(new Map().set(hostId, conn));
+                  setToastMessage("Connected! Waiting for world data...");
+              });
+              
+              conn.on('data', (data: any) => {
+                   clearTimeout(timeoutId); // Data received, connection valid
+                   handleNetworkData(data, hostId);
+              });
+              
+              conn.on('error', (err: any) => {
+                  clearTimeout(timeoutId);
+                  handleConnectionError("Connection Failed");
+              });
+              
+              conn.on('close', () => {
+                  clearTimeout(timeoutId);
+                  handleConnectionError("Disconnected from Host");
+              });
           });
-      });
+      } catch (e) {
+          clearTimeout(timeoutId);
+          handleConnectionError("Failed to initialize client.");
+      }
   };
   
   const handleSendChat = (message: string) => {
@@ -334,6 +414,7 @@ export default function App() {
 
   useEffect(() => {
     if (gameState === 'loading' && !isMultiplayer) {
+      setLoadingText("Generating Terrain...");
       const timer = setTimeout(() => {
         setGameState('menu');
       }, 2500); 
@@ -594,10 +675,6 @@ export default function App() {
   // Wrapped Place handler to broadcast changes
   const handlePlaceBlock = useCallback(() => {
       handleConsumeItem();
-      // NOTE: We don't have the exact coord here, InteractionController sets the map directly.
-      // Ideally InteractionController returns the pos. 
-      // For now, InteractionController handles local map set.
-      // To sync place, we need InteractionController to call a prop that broadcasts.
   }, [handleConsumeItem]);
 
   // New specific callback for network syncing placements from InteractionController
@@ -734,7 +811,7 @@ export default function App() {
 
   return (
     <div className={`relative w-full h-full bg-slate-900 select-none overflow-hidden touch-none ${settings.visualStyle === 'pixel' ? 'font-vt323' : 'font-sans'}`}>
-      {gameState === 'loading' && <LoadingScreen />}
+      {(gameState === 'loading' || isConnecting) && <LoadingScreen message={isConnecting ? loadingText : "Generating Terrain..."} />}
       
       {gameState === 'menu' && (
         <MainMenu 
@@ -745,7 +822,7 @@ export default function App() {
         />
       )}
 
-      {gameState === 'playing' && (
+      {gameState === 'playing' && !isConnecting && (
         <>
           <div className={`absolute inset-0 z-50 pointer-events-none bg-red-600 transition-opacity duration-100 ${damageFlash ? 'opacity-30' : 'opacity-0'}`} />
       
